@@ -42,9 +42,8 @@ COPY python-backend/ .
 # Install SAM2 from the included repository
 RUN cd sam2_repo && pip install -e . --verbose
 
-# Create models directory and copy existing models
+# Create models directory (models will be downloaded at runtime)
 RUN mkdir -p models
-COPY python-backend/models/ models/
 
 # Expose port
 EXPOSE 8000
