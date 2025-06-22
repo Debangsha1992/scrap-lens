@@ -1,0 +1,75 @@
+This .cursorrules file defines AI guidance for a project consisting of a Next.js frontend (TypeScript/React) and a Python backend. It enforces consistent code quality, formatting, testing practices, and handling of all project files. By following these rules, the AI assistant will help maintain a clean and maintainable codebase across both the JavaScript/TypeScript and Python portions of the project.
+Code Formatting & Linting – JavaScript/TypeScript (Next.js Frontend)
+
+1. ESLint Standards: All JavaScript/TypeScript code must comply with the project’s ESLint rules. The AI should avoid suggesting code that violates configured linting rules (e.g. no unused variables, no explicit any types, etc.). Use a well-known style guide (such as Airbnb or Next.js defaults) as the basis for linting conventions (https://huggingface.co/blog/lynn-mikami/cursor-rules#:~:text=2.%20Follow%20airbnb,length%20to%20maximum%2030%20lines). This ensures consistent, quality code across the frontend.
+
+
+2. Prettier Formatting: All suggestions for .js, .ts, .jsx, and .tsx files should be formatted with Prettier conventions (https://habr.com/ru/articles/892042/#:~:text=,—%20для%20анализа%20качества%20кода).
+The AI should automatically apply proper indentation, spacing, semicolons, quotes, etc., according to Prettier’s rules so that the generated code does not introduce formatting diffs.
+
+
+3. TypeScript Best Practices: Always use strong typing and interfaces in TypeScript. Avoid using any unless absolutely necessary. Prefer modern ES6+ syntax and functional components for React. Ensure code is idiomatic to Next.js (e.g. using Next.js router and API routes appropriately) and leverages TypeScript features (enums, generics, Union types) for clarity and safety.
+
+
+4. Code Smell Avoidance: Encourage clean code patterns – for example, use early returns instead of deeply nested conditionals and use descriptive, camelCase naming for variables and functions (https://huggingface.co/blog/lynn-mikami/cursor-rules#:~:text=2.%20Follow%20airbnb,length%20to%20maximum%2030%20lines).
+
+Keep functions and components concise (aim for a reasonable maximum length, e.g. ~30 lines for readability (https://huggingface.co/blog/lynn-mikami/cursor-rules#:~:text=2.%20Follow%20airbnb,length%20to%20maximum%2030%20lines)).
+
+
+# Code Formatting & Linting – Python (Backend)
+
+- PEP 8 Compliance: All Python code must follow PEP 8 style guidelines for readability and consistency. The AI should enforce standard conventions like proper naming, indentation, and line length (79 or 88 characters as per project config).
+
+- Black Auto-Formatting: Python suggestions should come pre-formatted with Black. Black is an opinionated formatter that automatically formats Python code to conform to PEP 8 (with a line length of 88 by default)
+https://realpython.com/python-pep8/#:~:text=automatically,see%20in%20an%20example%20below .
+The AI should output Python code that would produce no diff if run through Black (e.g. proper spacing, consistent quote style, etc.).
+
+Flake8 Linting: The AI must ensure Python code meets flake8 standards. flake8 checks for syntax errors and enforces PEP 8 compliance (combining pyflakes and pycodestyle under the hood)
+(https://realpython.com/python-pep8/#:~:text=Another%20popular%20option%20for%20linting,pycodestyle)Suggestions should not introduce unused imports, undefined variables, or stylistic issues that flake8 would catch.
+
+Python Best Practices: Use clear, snake_case naming for variables and functions. Include docstrings for modules, classes, and functions where appropriate. Avoid overly complex functions – break down logic into smaller functions or classes following single-responsibility principles. If the project uses type hints, ensure all function signatures include appropriate type annotations for static analysis.
+
+# AI-Powered File Generation & Editing Guidelines
+
+- Context-Aware Changes: When creating or modifying files, the AI should understand the project structure and context. Place new files in the appropriate directories (e.g. new Next.js pages or components under the Next.js app structure, and new Python modules or routes in the backend folder). Respect naming conventions for each environment (PascalCase or camelCase for React components, snake_case for Python modules).
+
+- Adhere to Project Architecture: Follow the established project architecture and frameworks. For Next.js, utilize the Next.js conventions (pages vs. app directory, API routes if needed) and React best practices. For the Python backend (e.g. a Flask/FastAPI/Django app), follow its project layout and usage patterns. The AI should use existing utilities and patterns in the codebase rather than introducing new ones arbitrarily – ensure consistency with how similar problems are already solved in the repository.
+
+- Minimal Disruptive Edits: Only modify code relevant to the user’s request. Avoid large rewrites of file content that aren't necessary. Preserve existing code style and comments. If a major refactor is needed, explain the rationale in the assistant’s response and ensure it still adheres to all lint/format rules.
+
+- Security, Scalability, Maintainability: In all suggestions, consider these aspects. For example, when generating code, avoid known vulnerabilities (sanitize inputs, use parameterized queries if applicable, etc.), write code that can scale (efficient loops, lazy loading in Next.js, etc.), and keep code maintainable (clear structure, comments for complex logic). The AI should provide brief justifications or comments for non-obvious decisions in the code it generates, to aid human understanding (e.g., “# using binary search here for efficiency”).
+
+- Cross-Technology Consistency: Ensure that changes in one part of the stack are reflected appropriately in the other. If the AI adds or modifies an API endpoint in the Python backend, it must also update any corresponding TypeScript types or frontend API calls in Next.js to match the new API contract. Maintaining alignment between front-end and back-end (such as JSON response fields, error codes, etc.) is crucial for a functional full-stack project.
+
+# Testing Guidelines (Frontend and Backend)
+
+- Frontend (Jest + React Testing Library): For the Next.js frontend, all components and logic should be accompanied by unit/integration tests using Jest and React Testing Library (https://nextjs.org/docs/app/guides/testing/jest#:~:text=Jest%20and%20React%20Testing%20Library,and%20write%20your%20first%20tests). 
+
+Test files should be colocated in a __tests__/ directory (or alongside components) and named with the .test.tsx/.test.ts (or .spec.tsx) suffix
+(https://nextjs.org/docs/app/guides/testing/jest#:~:text=Creating%20your%20first%20test) (https://nextjs.org/docs/app/guides/testing/jest#:~:text=__tests__%2Fpage). The AI should generate tests for new components or features, ensuring they cover the expected behavior and edge cases (e.g., rendering output, event handling, and state changes). Use @testing-library/react and @testing-library/jest-dom for assertions on rendered output (as is standard in Next.js projects).
+
+- Backend (pytest): For the Python backend, use pytest for testing. Test files reside in a tests/ directory (or alongside modules) and are named test_<module>.py (or <module>_test.py) so pytest can discover them
+(https://docs.pytest.org/en/stable/how-to/usage.html#:~:text=In%20general%2C%20pytest%20is%20invoked,follows%20standard%20test%20discovery%20rules). The AI should ensure that any new backend logic comes with corresponding tests (functions or classes have test_... functions exercising their behavior). Follow pytest conventions like using simple assert statements, and utilize fixtures or parametrization if needed to keep tests clean.
+
+- Test Coverage & Consistency: AI-generated code should strive to keep all tests passing. If changes are made to existing functionality, update the relevant tests to reflect the new behavior. For new features, aim for high test coverage to prevent regressions. The style of tests should match the project’s current testing style (for example, if using BDD-style describe/it blocks in Jest or certain pytest fixtures in Python, maintain that style).
+
+- Test Configuration: The AI should be aware of testing configs. For Jest, respect any custom configuration in jest.config.js (for example, module path aliases or custom test environment) and for Python, any pytest.ini or configuration (like coverage thresholds, markers). Ensure that suggestions do not break test discovery or introduce flake8/ESLint issues in test files (tests should also follow lint rules where applicable).
+
+
+# Project File Inclusion & Structure
+
+- All Files Are Considered: The AI should treat all files in the repository as part of the project context (except auto-generated or dependency directories like node_modules/, .next/ build output, or Python virtual env folders which are usually excluded). This means configuration files (e.g. .eslintrc.json, pyproject.toml, etc.), documentation (README.md, etc.), and scripts are all relevant and should be updated or referenced by the AI when appropriate.
+
+- Consistent Project Structure: Maintain the clean project structure. The repository likely has clearly separated folders for frontend and backend (e.g. a frontend/ directory for Next.js and a backend/ directory for Python code, or analogous separation). The AI should preserve this structure – for instance, frontend changes stay within the frontend folder and don’t bleed into backend files and vice versa, except when interfacing (like API calls). If new files are created, put them in the correct location to keep the project organized (e.g., don’t place a new React component at repo root; put it under frontend/components/ or similar).
+
+- Configuration & Scripts: Any changes to config files (like ESLint, Prettier, Babel, Webpack, Next config, or Python settings) should be made cautiously and only if necessary. The AI should not remove or ignore files unless explicitly instructed. For example, if the user asks to generate a new ESLint rule, the AI should update the ESLint config file rather than writing something ad-hoc in code. The AI should also respect and use existing scripts (e.g., if formatting is run via npm run format or a pre-commit hook, it should mention/use that rather than introducing a different workflow).
+
+
+# Default Behavior for Unknown File Types
+
+- Unspecified/Other File Types: For any file type not explicitly covered by the above rules, the AI should default to general best practices and minimal changes. Treat unknown extensions as plain text unless instructed otherwise. Do not attempt to interpret binary or proprietary file formats. For example, if encountering an image or binary file, the AI should not alter it. If encountering a markdown (.md) file, follow common Markdown style (proper headings, bullet indentation, etc.), and ensure any code snippets or configs in it adhere to project standards.
+
+- Ask When Unsure: If the AI is unsure how to handle an unknown file or language, it should ask for clarification from the user rather than making assumptions. It’s better to confirm the expected content/format of an unfamiliar file type than to introduce incorrect or inconsistent content.
+
+- Safety Net: By default, when no specific rule applies, prioritize not breaking anything. The AI should ensure it does not introduce syntax errors or remove necessary content in files it doesn’t fully understand. When editing such files, focus on preserving formatting and intent (e.g., for a .json or .yml config, maintain valid syntax and keys). For new files of an unrecognized type, provide a template or leave TODO comments for the user as appropriate, rather than guessing.
+
