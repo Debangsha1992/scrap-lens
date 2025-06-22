@@ -1,0 +1,16 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+[env]
+PYTHONPATH = "/app"
+MODEL_PATH = "/app/models"
+PORT = "8000"
+QT_QPA_PLATFORM = "offscreen"
+DISPLAY = ":99" 
