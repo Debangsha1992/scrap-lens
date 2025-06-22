@@ -40,7 +40,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY python-backend/ .
 
 # Install SAM2 from the included repository
-RUN cd sam2_repo && pip install -e .
+RUN cd sam2_repo && pip install -e . --verbose
 
 # Create models directory and copy existing models
 RUN mkdir -p models
@@ -59,5 +59,8 @@ ENV DISPLAY=:99
 HEALTHCHECK --interval=60s --timeout=30s --start-period=180s --retries=5 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run the application
-CMD ["uvicorn", "sam2_service.main:app", "--host", "0.0.0.0", "--port", "8000"] 
+# Test imports during build (optional - can be removed if build takes too long)
+# RUN python test_imports.py
+
+# Run the application using our startup script
+CMD ["python", "start_server.py"] 

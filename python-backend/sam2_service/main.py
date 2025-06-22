@@ -26,7 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 
-from sam2_predictor import SAM2Predictor
+from .sam2_predictor import SAM2Predictor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
