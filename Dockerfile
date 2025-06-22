@@ -1,4 +1,5 @@
-# Use official Python runtime as base image
+# Use official Python runtime as base image  
+# Railway deployment fix - 2025-06-22
 FROM python:3.10-slim
 
 # Set working directory
