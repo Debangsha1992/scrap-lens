@@ -4,7 +4,7 @@ FROM python:3.10-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including curl for healthcheck
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
@@ -39,11 +39,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the application code from python-backend directory
 COPY python-backend/ .
 
-# Create models directory
-RUN mkdir -p models
+# Install SAM2 from the included repository
+RUN cd sam2_repo && pip install -e .
 
-# Download SAM2 models (you may want to do this during build or at runtime)
-# For now, we'll assume models are copied or downloaded at runtime
+# Create models directory and copy existing models
+RUN mkdir -p models
+COPY python-backend/models/ models/
 
 # Expose port
 EXPOSE 8000
@@ -54,8 +55,8 @@ ENV MODEL_PATH=/app/models
 ENV QT_QPA_PLATFORM=offscreen
 ENV DISPLAY=:99
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
+# Health check - extended timeouts for model loading
+HEALTHCHECK --interval=60s --timeout=30s --start-period=180s --retries=5 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
