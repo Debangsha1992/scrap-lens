@@ -16,6 +16,18 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libxrender-dev \
     libgomp1 \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libxcb1 \
+    libxkbcommon-x11-0 \
+    libxcb-icccm4 \
+    libxcb-image0 \
+    libxcb-keysyms1 \
+    libxcb-randr0 \
+    libxcb-render-util0 \
+    libxcb-xinerama0 \
+    libxcb-xfixes0 \
+    libfontconfig1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first to leverage Docker cache
@@ -39,6 +51,8 @@ EXPOSE 8000
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV MODEL_PATH=/app/models
+ENV QT_QPA_PLATFORM=offscreen
+ENV DISPLAY=:99
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
