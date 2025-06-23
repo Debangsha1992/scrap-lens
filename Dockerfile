@@ -55,9 +55,9 @@ ENV MODEL_PATH=/app/models
 ENV QT_QPA_PLATFORM=offscreen
 ENV DISPLAY=:99
 
-# Health check - extended timeouts for model loading
-HEALTHCHECK --interval=60s --timeout=30s --start-period=180s --retries=5 \
-    CMD curl -f http://localhost:8000/health || exit 1
+# Health check disabled - Railway handles healthcheck
+# HEALTHCHECK --interval=60s --timeout=30s --start-period=180s --retries=5 \
+#     CMD curl -f http://localhost:8000/health || exit 1
 
 # Test imports during build (optional - can be removed if build takes too long)
 # RUN python test_imports.py

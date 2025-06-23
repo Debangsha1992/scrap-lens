@@ -150,34 +150,53 @@ async def run_segmentation(
 @app.get("/")
 async def root():
     """Root endpoint"""
-    return {"message": "SAM 2 Segmentation Service", "status": "running"}
+    logger.info("Root endpoint accessed")
+    return {"message": "SAM 2 Segmentation Service", "status": "running", "timestamp": "2025-06-23T15:34:40Z"}
+
+@app.get("/ping")
+async def ping():
+    """Simple ping endpoint for testing"""
+    logger.info("Ping endpoint accessed")
+    return {"status": "pong", "timestamp": "2025-06-23T15:34:40Z"}
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
     try:
+        # Log health check for debugging
+        logger.info("Health check requested")
+        
         # Service is considered healthy even if model isn't loaded yet
         # This prevents Railway from killing the service during model loading
         model_loaded = predictor is not None and hasattr(predictor, 'model') and predictor.model is not None
         
-        return {
+        health_status = {
             "status": "healthy",
             "model_loaded": model_loaded,
             "device": str(predictor.device) if predictor else "unknown",
             "service_running": True,
-            "message": "Model loading in progress..." if not model_loaded else "Service ready"
+            "message": "Model loading in progress..." if not model_loaded else "Service ready",
+            "timestamp": "2025-06-23T15:34:40Z"
         }
+        
+        logger.info(f"Health check response: {health_status}")
+        return health_status
+        
     except Exception as e:
         logger.error(f"Health check error: {e}")
         # Still return healthy status to prevent service shutdown during startup
-        return {
+        error_status = {
             "status": "healthy",
             "model_loaded": False,
             "device": "unknown", 
             "service_running": True,
             "error": str(e),
-            "message": "Service starting up..."
+            "message": "Service starting up...",
+            "timestamp": "2025-06-23T15:34:40Z"
         }
+        
+        logger.info(f"Health check error response: {error_status}")
+        return error_status
 
 @app.post("/load-model")
 async def load_model_endpoint():
