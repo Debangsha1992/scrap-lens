@@ -53,10 +53,15 @@ def start_server():
     
     try:
         import uvicorn
+        
+        # Use Railway's PORT environment variable if available
+        port = int(os.getenv("PORT", "8000"))
+        logger.info(f"Starting server on port {port}")
+        
         uvicorn.run(
             "sam2_service.main:app",
             host="0.0.0.0",
-            port=8000,
+            port=port,
             log_level="info",
             access_log=True
         )

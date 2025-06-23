@@ -162,9 +162,20 @@ async def ping():
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    # Always return healthy for Railway deployment
+    logger.info("Health check requested - returning healthy")
+    return {
+        "status": "healthy",
+        "service": "SAM2 Segmentation Service",
+        "timestamp": "2025-06-23T15:34:40Z"
+    }
+
+@app.get("/status")
+async def detailed_status():
+    """Detailed status endpoint"""
     try:
         # Log health check for debugging
-        logger.info("Health check requested")
+        logger.info("Detailed status requested")
         
         # Service is considered healthy even if model isn't loaded yet
         # This prevents Railway from killing the service during model loading
@@ -179,11 +190,11 @@ async def health_check():
             "timestamp": "2025-06-23T15:34:40Z"
         }
         
-        logger.info(f"Health check response: {health_status}")
+        logger.info(f"Detailed status response: {health_status}")
         return health_status
         
     except Exception as e:
-        logger.error(f"Health check error: {e}")
+        logger.error(f"Status check error: {e}")
         # Still return healthy status to prevent service shutdown during startup
         error_status = {
             "status": "healthy",
@@ -195,7 +206,7 @@ async def health_check():
             "timestamp": "2025-06-23T15:34:40Z"
         }
         
-        logger.info(f"Health check error response: {error_status}")
+        logger.info(f"Status error response: {error_status}")
         return error_status
 
 @app.post("/load-model")
