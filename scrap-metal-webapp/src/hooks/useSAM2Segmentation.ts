@@ -37,7 +37,8 @@ export const useSAM2Segmentation = (
 
   const checkServiceHealth = useCallback(async (): Promise<boolean> => {
     try {
-      const response = await axios.get(`${serviceUrl}/health`, { timeout: 5000 });
+      // Use /status endpoint which includes model_loaded information
+      const response = await axios.get(`${serviceUrl}/status`, { timeout: 5000 });
       const isHealthy = response.data.status === 'healthy' && response.data.model_loaded;
       setIsServiceAvailable(isHealthy);
       return isHealthy;
