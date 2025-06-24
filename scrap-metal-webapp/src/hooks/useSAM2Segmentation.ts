@@ -117,6 +117,8 @@ export const useSAM2Segmentation = (
             'Content-Type': 'multipart/form-data',
           },
           timeout: 120000, // 120 second timeout for segmentation
+          maxContentLength: 50 * 1024 * 1024, // 50MB max content length
+          maxBodyLength: 50 * 1024 * 1024, // 50MB max body length
         }
       );
 
@@ -129,12 +131,27 @@ export const useSAM2Segmentation = (
       }
 
     } catch (err: unknown) {
-      const errorMessage = axios.isAxiosError(err) 
-        ? err.response?.data?.detail || err.message || 'Failed to segment image'
-        : 'Failed to segment image';
+      console.error('SAM 2 segmentation error:', err);
+      
+      let errorMessage = 'Failed to segment image';
+      
+      if (axios.isAxiosError(err)) {
+        if (err.code === 'ECONNABORTED') {
+          errorMessage = 'Request timeout - segmentation took too long';
+        } else if (err.code === 'ERR_NETWORK') {
+          errorMessage = 'Network error - check your connection and try again';
+        } else if (err.response?.status === 413) {
+          errorMessage = 'Image too large - please use a smaller image';
+        } else if (err.response?.status === 500) {
+          errorMessage = 'Server error during segmentation';
+        } else if (err.response?.data?.detail) {
+          errorMessage = err.response.data.detail;
+        } else if (err.message) {
+          errorMessage = err.message;
+        }
+      }
       
       setError(errorMessage);
-      console.error('SAM 2 segmentation error:', err);
     } finally {
       setLoading(false);
     }

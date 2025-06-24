@@ -39,6 +39,25 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Add request size limit middleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.middleware("http")
+async def limit_upload_size(request: Request, call_next):
+    """Limit upload size to prevent memory issues"""
+    if request.method == "POST" and request.url.path in ["/segment", "/segment-url"]:
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > 50 * 1024 * 1024:  # 50MB limit
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "File too large. Maximum size is 50MB."}
+            )
+    
+    response = await call_next(request)
+    return response
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
