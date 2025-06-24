@@ -105,6 +105,14 @@ def process_image_data(image_data: bytes) -> np.ndarray:
         if image.mode != 'RGB':
             image = image.convert('RGB')
         
+        # Resize large images for faster processing
+        max_size = 1024  # Maximum dimension
+        if max(image.size) > max_size:
+            ratio = max_size / max(image.size)
+            new_size = tuple(int(dim * ratio) for dim in image.size)
+            image = image.resize(new_size, Image.Resampling.LANCZOS)
+            logger.info(f"Resized image from {image.size} to {new_size} for faster processing")
+        
         # Convert to numpy array
         image_array = np.array(image)
         

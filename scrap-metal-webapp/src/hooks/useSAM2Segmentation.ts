@@ -91,7 +91,7 @@ export const useSAM2Segmentation = (
           headers: {
             'Content-Type': 'application/json',
           },
-          timeout: 120000,
+          timeout: 300000,
         });
 
         const result: SAM2SegmentationResult = urlResponse.data;
@@ -116,7 +116,7 @@ export const useSAM2Segmentation = (
           headers: {
             'Content-Type': 'multipart/form-data',
           },
-          timeout: 120000, // 120 second timeout for segmentation
+          timeout: 300000, // 300 second (5 minute) timeout for segmentation
           maxContentLength: 50 * 1024 * 1024, // 50MB max content length
           maxBodyLength: 50 * 1024 * 1024, // 50MB max body length
         }

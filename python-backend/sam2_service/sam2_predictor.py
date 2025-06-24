@@ -149,17 +149,17 @@ class SAM2Predictor:
             # Import automatic mask generator
             from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
             
-            # Create mask generator with balanced parameters for better coverage
+            # Create mask generator optimized for speed
             mask_generator = SAM2AutomaticMaskGenerator(
                 model=self.model,
-                points_per_side=28,  # Moderate increase for better coverage
-                pred_iou_thresh=0.65,  # Balanced threshold for quality vs coverage
-                stability_score_thresh=0.88,  # Balanced stability threshold
-                box_nms_thresh=0.65,  # Moderate NMS for better coverage
-                crop_n_layers=1,  # Keep crop layers for better coverage
-                crop_nms_thresh=0.65,  # Moderate NMS between crops
-                min_mask_region_area=200,  # Balanced minimum area
-                multimask_output=True,  # Enable multiple masks per point
+                points_per_side=16,  # Reduced for faster processing
+                pred_iou_thresh=0.7,  # Higher threshold for fewer, better masks
+                stability_score_thresh=0.9,  # Higher threshold for stability
+                box_nms_thresh=0.7,  # Higher NMS for fewer overlaps
+                crop_n_layers=0,  # Disable crop layers for speed
+                crop_nms_thresh=0.7,  # Higher NMS between crops
+                min_mask_region_area=500,  # Larger minimum area to reduce small masks
+                multimask_output=False,  # Disable multiple masks per point for speed
             )
             
             # Generate masks
@@ -168,9 +168,9 @@ class SAM2Predictor:
             # Post-process to remove overlapping masks
             filtered_masks = self._filter_overlapping_masks(masks)
             
-            # Sort by score and limit number of masks
+            # Sort by score and limit number of masks for speed
             filtered_masks.sort(key=lambda x: x['predicted_iou'], reverse=True)
-            max_masks = 25  # Increased to 25 masks for better coverage
+            max_masks = 15  # Reduced to 15 masks for faster processing
             filtered_masks = filtered_masks[:max_masks]
             
             # Extract masks and scores
