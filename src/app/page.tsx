@@ -27,16 +27,7 @@ export default function Home(): React.JSX.Element {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [showAnalytics, setShowAnalytics] = useState(false);
-
-  // Check if we're in development mode - be more aggressive
-  const isDevelopment = typeof window !== 'undefined' && 
-    (window.location.hostname === 'localhost' || 
-     window.location.hostname.includes('vercel.app') ||
-     window.location.hostname.includes('scrap-lens-dev') ||
-     window.location.hostname.includes('scrap-lens') ||
-     process.env.NODE_ENV === 'development' ||
-     process.env.VERCEL_ENV === 'preview' ||
-     process.env.VERCEL_ENV === 'development');
+  const [isDevelopment, setIsDevelopment] = useState(false);
 
   // State management
   const [imageUrl, setImageUrl] = useState('');
@@ -49,6 +40,20 @@ export default function Home(): React.JSX.Element {
   const { description, boxes, segments, usage, loading, error, analyzeImage, clearResults } = useImageAnalysis();
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Set development mode after component mounts to avoid hydration mismatch
+  useEffect(() => {
+    const devMode = typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || 
+       window.location.hostname.includes('vercel.app') ||
+       window.location.hostname.includes('scrap-lens-dev') ||
+       window.location.hostname.includes('scrap-lens') ||
+       process.env.NODE_ENV === 'development' ||
+       process.env.VERCEL_ENV === 'preview' ||
+       process.env.VERCEL_ENV === 'development');
+    
+    setIsDevelopment(devMode);
+  }, []);
 
   // Authentication effect - skip in development
   useEffect(() => {
@@ -212,6 +217,18 @@ export default function Home(): React.JSX.Element {
             <p className="text-gray-600">Please sign in to continue</p>
           </div>
           <AuthComponent />
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading while determining development mode
+  if (!isDevelopment && authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Initializing...</p>
         </div>
       </div>
     );
