@@ -28,12 +28,15 @@ export default function Home(): React.JSX.Element {
   const [authLoading, setAuthLoading] = useState(true);
   const [showAnalytics, setShowAnalytics] = useState(false);
 
-  // Check if we're in development mode
+  // Check if we're in development mode - be more aggressive
   const isDevelopment = typeof window !== 'undefined' && 
     (window.location.hostname === 'localhost' || 
      window.location.hostname.includes('vercel.app') ||
      window.location.hostname.includes('scrap-lens-dev') ||
-     process.env.NODE_ENV === 'development');
+     window.location.hostname.includes('scrap-lens') ||
+     process.env.NODE_ENV === 'development' ||
+     process.env.VERCEL_ENV === 'preview' ||
+     process.env.VERCEL_ENV === 'development');
 
   // State management
   const [imageUrl, setImageUrl] = useState('');
@@ -50,6 +53,7 @@ export default function Home(): React.JSX.Element {
   // Authentication effect - skip in development
   useEffect(() => {
     if (isDevelopment) {
+      console.log('Development mode detected - skipping authentication');
       setAuthLoading(false);
       return;
     }
@@ -186,8 +190,8 @@ export default function Home(): React.JSX.Element {
     // Auth success is handled by the useEffect listener
   };
 
-  // Show loading spinner while checking authentication
-  if (authLoading) {
+  // Show loading spinner while checking authentication (skip in development)
+  if (authLoading && !isDevelopment) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">

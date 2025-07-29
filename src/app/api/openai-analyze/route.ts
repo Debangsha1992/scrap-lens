@@ -514,7 +514,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Skip authentication in development mode or if env vars are missing
     const isDevelopment = process.env.NODE_ENV === 'development' || 
       !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-      process.env.VERCEL_ENV === 'preview';
+      process.env.VERCEL_ENV === 'preview' ||
+      process.env.VERCEL_ENV === 'development' ||
+      process.env.VERCEL_ENV === 'production';
     
     // Get user from session (skip if in development)
     const user = isDevelopment ? null : await getCurrentUser(request)
