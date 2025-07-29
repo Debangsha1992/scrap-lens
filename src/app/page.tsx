@@ -32,6 +32,7 @@ export default function Home(): React.JSX.Element {
   const isDevelopment = typeof window !== 'undefined' && 
     (window.location.hostname === 'localhost' || 
      window.location.hostname.includes('vercel.app') ||
+     window.location.hostname.includes('scrap-lens-dev') ||
      process.env.NODE_ENV === 'development');
 
   // State management
