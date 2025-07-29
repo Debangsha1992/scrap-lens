@@ -2,8 +2,8 @@ import { BoundingBox, ImageProcessingConfig, SegmentationPolygon } from '@/types
 
 // Configuration constants
 export const IMAGE_CONFIG: ImageProcessingConfig = {
-  maxWidth: 800,
-  maxHeight: 600,
+  maxWidth: 640,  // Reduced from 800 to 640 (20% reduction)
+  maxHeight: 480, // Reduced from 600 to 480 (20% reduction)
   supportedFormats: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
   maxFileSize: 10 * 1024 * 1024, // 10MB
 };
@@ -69,47 +69,129 @@ export const calculateCanvasDimensions = (
 };
 
 /**
- * Draws bounding boxes on canvas with labels
+ * Draws animated radiating circles on detected objects with description lines
  */
 export const drawBoundingBoxes = (
   ctx: CanvasRenderingContext2D,
   boxes: BoundingBox[],
-  scale: number
+  selectedBoxIndices?: Set<number>
 ): void => {
-  boxes.forEach((box, index) => {
-    const color = DETECTION_COLORS[index % DETECTION_COLORS.length];
+  const canvasWidth = ctx.canvas.width;
+  const canvasHeight = ctx.canvas.height;
+  
+  // Filter boxes based on selection (show all if none selected or only selected ones)
+  const filteredBoxes = selectedBoxIndices && selectedBoxIndices.size > 0 
+    ? boxes.filter((_, index) => selectedBoxIndices.has(index))
+    : boxes;
+  
+  filteredBoxes.forEach((box, filteredIndex) => {
+    // Find the original index for color consistency
+    const originalIndex = boxes.findIndex(b => b === box);
+    const color = DETECTION_COLORS[originalIndex % DETECTION_COLORS.length];
 
-    // Calculate scaled coordinates
-    const x = box.x * scale;
-    const y = box.y * scale;
-    const width = box.width * scale;
-    const height = box.height * scale;
-
-    // Draw bounding box
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
-    ctx.strokeRect(x, y, width, height);
-
-    // Draw label background and text
-    const labelText = box.confidence 
-      ? `${box.label} (${(box.confidence * 100).toFixed(1)}%)`
-      : box.label;
+    // Scale coordinates from normalized format (0-1000) to canvas coordinates
+    const normalizedX = box.x / 1000;
+    const normalizedY = box.y / 1000;
+    const normalizedWidth = box.width / 1000;
+    const normalizedHeight = box.height / 1000;
     
-    ctx.font = 'bold 14px Inter, system-ui, sans-serif';
-    const textMetrics = ctx.measureText(labelText);
-    const labelWidth = textMetrics.width + 8;
-    const labelHeight = 20;
-
-    // Label background
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y - labelHeight, labelWidth, labelHeight);
-
-    // Label text
-    ctx.fillStyle = '#FFFFFF';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText(labelText, x + 4, y - labelHeight + 3);
+    // Calculate center point of the detected object
+    const centerX = (normalizedX + normalizedWidth / 2) * canvasWidth;
+    const centerY = (normalizedY + normalizedHeight / 2) * canvasHeight;
+    
+    // Draw animated radiating circle
+    drawRadiatingCircle(ctx, centerX, centerY, color, originalIndex);
+    
+    // Draw description line extending to the right
+    drawDescriptionLine(ctx, centerX, centerY, box.label, color, originalIndex, canvasWidth);
   });
+};
+
+/**
+ * Draws an animated radiating circle at the specified position
+ */
+const drawRadiatingCircle = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  color: string,
+  index: number
+): void => {
+  const time = Date.now() * 0.003; // Slow animation speed
+  const baseRadius = 8;
+  const pulseRadius = 4;
+  
+  // Create multiple concentric circles with different phases
+  for (let i = 0; i < 3; i++) {
+    const phase = (time + index * 0.5 + i * 0.8) % (Math.PI * 2);
+    const radius = baseRadius + Math.sin(phase) * pulseRadius + i * 6;
+    const alpha = 0.4 - i * 0.1;
+    
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  
+  // Draw solid center circle
+  ctx.beginPath();
+  ctx.arc(x, y, 4, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 1;
+  ctx.fill();
+};
+
+/**
+ * Draws a description line extending to the right with object label
+ */
+const drawDescriptionLine = (
+  ctx: CanvasRenderingContext2D,
+  startX: number,
+  startY: number,
+  label: string,
+  color: string,
+  index: number,
+  canvasWidth: number
+): void => {
+  const rightMargin = 20;
+  const lineEndX = canvasWidth - rightMargin;
+  const verticalSpacing = 30;
+  
+  // Calculate description position (spread vertically on the right side)
+  const descriptionY = 40 + (index * verticalSpacing);
+  
+  // Draw line from circle to description area
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  ctx.lineTo(lineEndX - 150, descriptionY);
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.7;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  
+  // Draw description background
+  const labelText = label.length > 20 ? label.substring(0, 20) + '...' : label;
+  ctx.font = 'bold 12px Inter, system-ui, sans-serif';
+  const textMetrics = ctx.measureText(labelText);
+  const textWidth = textMetrics.width;
+  const textHeight = 18;
+  
+  // Background rectangle
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.9;
+  ctx.fillRect(lineEndX - 150, descriptionY - textHeight/2, textWidth + 12, textHeight);
+  
+  // Text
+  ctx.fillStyle = '#FFFFFF';
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(labelText, lineEndX - 150 + 6, descriptionY);
+  
+  // Reset global alpha
+  ctx.globalAlpha = 1;
 };
 
 /**

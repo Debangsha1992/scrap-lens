@@ -34,12 +34,12 @@ export const ObjectDetectionSummary: React.FC<ObjectDetectionSummaryProps> = ({
             strokeWidth={2} 
             d={isSegmentation 
               ? "M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
-              : "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+              : "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
             } 
           />
         </svg>
         <h4 className="font-semibold text-gray-800">
-          {isSegmentation ? `Segmented Objects (${itemCount})` : `Detected Objects (${itemCount})`}
+          {isSegmentation ? `Segmented Scrap Items (${itemCount})` : `Detected Scrap Items (${itemCount})`}
         </h4>
       </div>
 
@@ -56,7 +56,7 @@ export const ObjectDetectionSummary: React.FC<ObjectDetectionSummaryProps> = ({
           ))
         ) : (
           boxes.map((box, index) => (
-            <ObjectCard 
+            <ScrapMetalCard 
               key={`${box.label}-${index}`} 
               box={box} 
               colorIndex={index} 
@@ -71,17 +71,22 @@ export const ObjectDetectionSummary: React.FC<ObjectDetectionSummaryProps> = ({
 };
 
 /**
- * Individual object card component for bounding boxes
+ * Individual object card component for scrap metal items
  */
-interface ObjectCardProps {
+interface ScrapMetalCardProps {
   box: BoundingBox;
   colorIndex: number;
   isSelected: boolean;
   onToggle: () => void;
 }
 
-const ObjectCard: React.FC<ObjectCardProps> = ({ box, colorIndex, isSelected, onToggle }) => {
+const ScrapMetalCard: React.FC<ScrapMetalCardProps> = ({ box, colorIndex, isSelected, onToggle }) => {
   const color = DETECTION_COLORS[colorIndex % DETECTION_COLORS.length];
+  
+  // Extract type and category from label format: "Type (Category)"
+  const labelMatch = box.label.match(/^(.+?)\s*\((.+?)\)$/);
+  const type = labelMatch ? labelMatch[1] : box.label;
+  const category = labelMatch ? labelMatch[2] : '';
 
   return (
     <div 
@@ -101,13 +106,18 @@ const ObjectCard: React.FC<ObjectCardProps> = ({ box, colorIndex, isSelected, on
         aria-hidden="true"
       />
       <div className="flex-1 min-w-0">
-        <div className="font-medium text-gray-800 truncate" title={box.label}>
-          {box.label.replace(/^plaintext\s*/i, "")}
+        <div className="font-medium text-gray-800 truncate" title={type}>
+          {type}
         </div>
-        <div className="text-xs text-gray-500">
+        {category && (
+          <div className="text-xs text-blue-600 font-medium truncate" title={`Category: ${category}`}>
+            {category}
+          </div>
+        )}
+        <div className="text-xs text-gray-500 mt-1">
           Position: ({box.x}, {box.y}) • Size: {box.width}×{box.height}
           {box.confidence && (
-            <span className="ml-2 text-blue-600 font-medium">
+            <span className="ml-2 text-green-600 font-medium">
               {(box.confidence * 100).toFixed(0)}%
             </span>
           )}

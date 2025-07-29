@@ -2,9 +2,11 @@ import { BoundingBox } from '@/types/api';
 
 /**
  * Parses bounding box coordinates from AI response text
- * Supports multiple coordinate formats and labeled objects
+ * Returns coordinates in normalized format (0-1000) - scaling is handled by ImageCanvas
  */
-export const parseBoundingBoxes = (description: string): BoundingBox[] => {
+export const parseBoundingBoxes = (
+  description: string
+): BoundingBox[] => {
   const boxes: BoundingBox[] = [];
 
   try {
@@ -20,43 +22,72 @@ export const parseBoundingBoxes = (description: string): BoundingBox[] => {
       
       // Filter out generic coordinate references that aren't actual objects
       if (isValidObjectLabel(cleanLabel)) {
-        boxes.push({
+        // Keep coordinates in normalized format (0-1000) - ImageCanvas will handle scaling
+        const box: BoundingBox = {
           label: cleanLabel,
           x: parseInt(x, 10),
           y: parseInt(y, 10),
           width: parseInt(width, 10),
           height: parseInt(height, 10),
-          confidence: 0.85,
-        });
+          confidence: extractConfidence(description, cleanLabel)
+        };
+        
+        boxes.push(box);
       }
     });
 
-    // Also look for object descriptions followed by coordinates on the same line
-    // Pattern: ObjectName at `[x, y, width, height]` or ObjectName located at `[x, y, width, height]`
-    const objectAtCoordinateRegex = /([A-Za-z][A-Za-z\s]+?)(?:\s+(?:at|located at|positioned at|found at))\s+`\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]`/g;
-    const objectMatches = Array.from(description.matchAll(objectAtCoordinateRegex));
-
-    objectMatches.forEach((match) => {
-      const [, label, x, y, width, height] = match;
-      const cleanLabel = sanitizeLabel(label);
+    // Fallback: Look for alternative coordinate patterns
+    if (boxes.length === 0) {
+      const alternativeRegex = /([^[\]]+)\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]/g;
+      const altMatches = Array.from(description.matchAll(alternativeRegex));
       
-      // Check if this object isn't already added and is a valid object
-      if (isValidObjectLabel(cleanLabel) && !boxes.some(box => box.label === cleanLabel)) {
-        boxes.push({
-          label: cleanLabel,
-          x: parseInt(x, 10),
-          y: parseInt(y, 10),
-          width: parseInt(width, 10),
-          height: parseInt(height, 10),
-          confidence: 0.8,
-        });
-      }
-    });
+      altMatches.forEach((match) => {
+        const [, label, x, y, width, height] = match;
+        const cleanLabel = sanitizeLabel(label);
+        
+        if (isValidObjectLabel(cleanLabel)) {
+          const box: BoundingBox = {
+            label: cleanLabel,
+            x: parseInt(x, 10),
+            y: parseInt(y, 10),
+            width: parseInt(width, 10),
+            height: parseInt(height, 10),
+            confidence: extractConfidence(description, cleanLabel)
+          };
+          
+          boxes.push(box);
+        }
+      });
+    }
 
     return boxes;
-  } catch (parseError) {
-    console.error('Error parsing bounding box data from text:', parseError);
+  } catch (error) {
+    console.error('Error parsing bounding boxes:', error);
     return [];
+  }
+};
+
+/**
+ * Extracts confidence score for a given label from the description
+ */
+const extractConfidence = (description: string, label: string): number => {
+  try {
+    // Escape special regex characters in the label
+    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    
+    // Look for confidence patterns like (85.0%) or 85% near the label
+    const confidenceRegex = new RegExp(`${escapedLabel}[^()]*\\(?(\\d+(?:\\.\\d+)?)%\\)?`, 'i');
+    const match = description.match(confidenceRegex);
+    
+    if (match) {
+      const confidence = parseFloat(match[1]);
+      return confidence / 100; // Convert to 0-1 range
+    }
+    
+    return 0.8; // Default confidence if not found
+  } catch (error) {
+    console.warn('Error extracting confidence for label:', label, error);
+    return 0.8; // Default confidence on error
   }
 };
 
@@ -73,33 +104,65 @@ const sanitizeLabel = (label: string): string => {
 const isValidObjectLabel = (label: string): boolean => {
   const invalidLabels = [
     'bounding box coordinates',
-    'bounding box coordinate',
     'coordinates',
-    'coordinate',
     'position',
     'location',
-    'bbox',
-    'box coordinates',
-    'object coordinates',
-    'detection coordinates',
-    'coordinate data',
-    'coordinate information'
+    'box',
+    'coordinate',
+    'summary',
+    'objects',
+    'their',
+    'analysis',
+    'covers',
+    'visible',
+    'image',
+    'along',
+    'with',
+    'respective',
+    'this',
+    'overall scene',
+    'scene',
+    'overall',
+    'background',
+    'setting',
+    'environment',
+    'context',
+    'photo',
+    'picture',
+    'general scene',
+    'main scene',
+    'entire scene',
+    'full scene',
+    'complete scene',
+    'whole scene',
+    'scene description',
+    'scene analysis'
   ];
   
-  const normalizedLabel = label.toLowerCase().trim();
+  const cleanLabel = label.toLowerCase().trim();
   
-  // Filter out generic coordinate references
-  if (invalidLabels.includes(normalizedLabel)) {
+  // Remove common prefixes that might interfere with filtering
+  const cleanedLabel = cleanLabel
+    .replace(/^plaintext\s*/i, '')
+    .replace(/^text\s*/i, '')
+    .replace(/^\d+\.\s*/, '')
+    .replace(/^[-*]\s*/, '')
+    .trim();
+  
+  // Filter out invalid labels using multiple matching strategies
+  const isInvalid = invalidLabels.some(unwanted => 
+    cleanedLabel === unwanted || 
+    cleanedLabel.includes(unwanted) ||
+    cleanedLabel.startsWith(unwanted) ||
+    cleanedLabel.endsWith(unwanted)
+  );
+  
+  if (isInvalid) {
     return false;
   }
   
-  // Filter out very short labels that are likely not real objects
-  if (normalizedLabel.length < 3) {
-    return false;
-  }
-  
-  // Filter out labels that are just numbers or coordinates
-  if (/^\d+$/.test(normalizedLabel) || /^[\d\s,\[\]]+$/.test(normalizedLabel)) {
+  // Must be at least 2 characters and contain letters
+  if (cleanedLabel.length < 2 || !/[a-z]/.test(cleanedLabel)) {
     return false;
   }
   
@@ -107,14 +170,23 @@ const isValidObjectLabel = (label: string): boolean => {
 };
 
 /**
- * Validates parsed bounding box coordinates
+ * Validates a bounding box object
  */
 export const validateBoundingBox = (box: BoundingBox): boolean => {
   return (
+    !!box.label &&
+    box.label.length > 0 &&
+    typeof box.x === 'number' &&
+    typeof box.y === 'number' &&
+    typeof box.width === 'number' &&
+    typeof box.height === 'number' &&
     box.x >= 0 &&
     box.y >= 0 &&
     box.width > 0 &&
     box.height > 0 &&
-    box.label.length > 0
+    box.x <= 1000 &&
+    box.y <= 1000 &&
+    box.width <= 1000 &&
+    box.height <= 1000
   );
 }; 

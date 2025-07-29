@@ -17,50 +17,33 @@ export const RateLimitCounter: React.FC<RateLimitCounterProps> = ({
   total = 10,
   resetTime,
 }) => {
-  const [currentTime, setCurrentTime] = useState(Date.now());
+  const percentage = (remaining / total) * 100;
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(Date.now());
-    }, 60000); // Update every minute
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const used = total - remaining;
-  const percentage = (used / total) * 100;
-
-  // Format reset time
   const formatResetTime = (resetTime: number) => {
-    const timeUntilReset = resetTime - currentTime;
+    const now = Date.now();
+    const diff = resetTime - now;
     
-    if (timeUntilReset <= 0) {
-      return 'now';
-    }
-
-    const hours = Math.floor(timeUntilReset / (1000 * 60 * 60));
-    const minutes = Math.floor((timeUntilReset % (1000 * 60 * 60)) / (1000 * 60));
-
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    }
+    if (diff <= 0) return 'Reset now';
     
+    const minutes = Math.floor(diff / (1000 * 60));
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days}d ${hours % 24}h`;
+    if (hours > 0) return `${hours}h ${minutes % 60}m`;
     return `${minutes}m`;
   };
 
-  // Determine status color based on usage
   const getStatusColor = () => {
-    if (remaining === 0) return 'text-red-600 bg-red-50 border-red-200';
-    if (remaining <= 2) return 'text-orange-600 bg-orange-50 border-orange-200';
-    if (remaining <= 5) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-    return 'text-green-600 bg-green-50 border-green-200';
+    if (percentage > 50) return 'text-green-600';
+    if (percentage > 20) return 'text-yellow-600';
+    return 'text-red-600';
   };
 
   const getProgressColor = () => {
-    if (remaining === 0) return 'bg-red-500';
-    if (remaining <= 2) return 'bg-orange-500';
-    if (remaining <= 5) return 'bg-yellow-500';
-    return 'bg-green-500';
+    if (percentage > 50) return 'bg-green-500';
+    if (percentage > 20) return 'bg-yellow-500';
+    return 'bg-red-500';
   };
 
   return (
@@ -73,7 +56,7 @@ export const RateLimitCounter: React.FC<RateLimitCounterProps> = ({
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-sm">API Usage</h3>
         <span className="text-xs font-medium">
-          {used}/{total} requests
+          {remaining}/{total} requests
         </span>
       </div>
 

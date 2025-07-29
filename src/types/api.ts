@@ -20,36 +20,6 @@ export interface SegmentationPolygon {
   pixelCoverage?: number; // Percentage of image covered by this segment
 }
 
-// New SAM 2 types
-export interface SAM2Mask {
-  id: number;
-  mask: string; // Base64 encoded mask image
-  score: number;
-  area: number;
-  label?: string; // Optional label for the mask
-}
-
-export interface SAM2SegmentationResult {
-  success: boolean;
-  mode: 'everything' | 'points' | 'boxes';
-  num_masks: number;
-  masks: SAM2Mask[];
-  image_shape: [number, number]; // [height, width]
-}
-
-export interface SAM2Point {
-  x: number;
-  y: number;
-  label: 1 | 0; // 1 for positive, 0 for negative
-}
-
-export interface SAM2Box {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-}
-
 export interface ErrorResponse {
   response?: {
     data?: {
@@ -62,12 +32,10 @@ export interface AnalysisResponse {
   description: string;
   boxes?: BoundingBox[];
   segments?: SegmentationPolygon[];
-  sam2_masks?: SAM2Mask[]; // New field for SAM 2 masks
   usage?: ApiUsage;
   model?: string;
   boundingBoxesEnabled?: boolean;
   segmentationEnabled?: boolean;
-  sam2Enabled?: boolean; // New field for SAM 2 mode
 }
 
 export interface ImageProcessingConfig {
@@ -77,8 +45,53 @@ export interface ImageProcessingConfig {
   maxFileSize: number;
 }
 
+// New type definitions for proper typing
+export interface CachedImageMetadata {
+  filename: string;
+  size: number;
+  mimeType: string;
+  width?: number;
+  height?: number;
+  hash: string;
+  uploadedAt: string;
+}
+
+export interface UserSessionData {
+  userId: string;
+  email: string;
+  subscriptionTier: 'free' | 'premium' | 'enterprise';
+  apiUsageCount: number;
+  apiUsageResetDate: string;
+  lastActivity: string;
+}
+
+export interface ConfidenceScores {
+  boxes?: number[];
+  segments?: number[];
+  overall?: number;
+}
+
+export interface UserCorrections {
+  addedBoxes?: BoundingBox[];
+  removedBoxes?: BoundingBox[];
+  modifiedBoxes?: Array<{ original: BoundingBox; modified: BoundingBox }>;
+  addedSegments?: SegmentationPolygon[];
+  removedSegments?: SegmentationPolygon[];
+  modifiedSegments?: Array<{ original: SegmentationPolygon; modified: SegmentationPolygon }>;
+}
+
+export interface TrainingDataExport {
+  id: string;
+  imageId: string;
+  userId: string | null;
+  groundTruthBoxes: BoundingBox[] | null;
+  groundTruthLabels: string[] | null;
+  userCorrections: UserCorrections | null;
+  feedbackScore: number | null;
+  isApprovedForTraining: boolean;
+  createdAt: string;
+}
+
 export type InputMethod = 'url' | 'file';
-export type AnalysisMode = 'detection' | 'segmentation' | 'sam2'; // Added SAM 2 mode
-export type ModelType = 'qwen-vl-max' | 'qwen-vl-plus' | 'qwen-vl-max-2025-04-08';
-export type SAM2Mode = 'everything' | 'points' | 'boxes';
-export type SAM2ModelSize = 'tiny' | 'small' | 'base_plus' | 'large'; 
+export type AnalysisMode = 'detection' | 'segmentation';
+export type ModelType = 'qwen-vl-max' | 'qwen-vl-plus' | 'qwen-vl-max-2025-04-08'; 

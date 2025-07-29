@@ -1,48 +1,97 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { InputMethod, AnalysisMode, ModelType, SAM2Mode, SAM2Mask } from '@/types/api';
+import { User } from '@supabase/supabase-js';
+import { InputMethod } from '@/types/api';
 import { useImageAnalysis } from '@/hooks/useImageAnalysis';
-import { useSAM2Segmentation } from '@/hooks/useSAM2Segmentation';
 import { ImageCanvas } from '@/components/ImageCanvas';
-import { ObjectDetectionSummary } from '@/components/ObjectDetectionSummary';
 import { ImageInputCard } from '@/components/ImageInputCard';
-import { RateLimitCounter } from '@/components/RateLimitCounter';
-import { ModelSelector } from '@/components/ModelSelector';
-import { SAM2ModeSelector } from '@/components/SAM2ModeSelector';
-import { BoxSelectionProvider } from '@/context/BoxSelectionContext';
+import { BoxSelectionProvider, useBoxSelection } from '@/context/BoxSelectionContext';
+import { AuthComponent } from '@/components/AuthComponent';
+import { AnalyticsDashboard } from '@/components/AnalyticsDashboard';
+import { ClickableMarkdown } from '@/components/ClickableMarkdown';
+import { supabase } from '@/lib/supabase';
+import { UserProfile, subscriptionLimits } from '@/types/auth';
+import Image from 'next/image';
 
 const EXAMPLE_IMAGE_URL = 'https://dashscope.oss-cn-beijing.aliyuncs.com/images/dog_and_girl.jpeg';
 
 /**
  * Main application component for AI image analysis
- * Provides file upload, URL input, object detection, segmentation, and SAM 2 capabilities
+ * Provides file upload, URL input, and object detection capabilities
  */
 export default function Home(): React.JSX.Element {
+  // Authentication state
+  const [user, setUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+
   // State management
   const [imageUrl, setImageUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('detection');
-  const [selectedModel, setSelectedModel] = useState<ModelType>('qwen-vl-max');
-  const [sam2Mode, setSam2Mode] = useState<SAM2Mode>('everything');
   const [currentImage, setCurrentImage] = useState<string>('');
   const [inputMethod, setInputMethod] = useState<InputMethod>('file');
   const [selectedBoxIndices, setSelectedBoxIndices] = useState<Set<number>>(new Set());
 
   // Hooks
-  const { description, boxes, segments, usage, loading, error, rateLimitInfo, analyzeImage, clearResults } = useImageAnalysis();
-  const { 
-    masks: sam2Masks, 
-    loading: sam2Loading, 
-    error: sam2Error, 
-    segmentImage: sam2SegmentImage, 
-    clearResults: clearSam2Results,
-    isServiceAvailable: sam2ServiceAvailable,
-    checkServiceHealth: checkSam2Health
-  } = useSAM2Segmentation();
+  const { description, boxes, segments, usage, loading, error, analyzeImage, clearResults } = useImageAnalysis();
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Authentication effect
+  useEffect(() => {
+    const getUser = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        setUser(user);
+        
+        if (user) {
+          // Fetch user profile
+          const { data: profile } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+          
+          setUserProfile(profile);
+        }
+      } catch (error) {
+        console.error('Error getting user:', error);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    getUser();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          setUser(session.user);
+          
+          // Fetch user profile
+          const { data: profile } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          
+          setUserProfile(profile);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setUserProfile(null);
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Derived state
+  const hasInput = Boolean(selectedFile || imageUrl.trim());
 
   // Event handlers
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>): void => {
@@ -50,32 +99,26 @@ export default function Home(): React.JSX.Element {
     if (!file) return;
 
     setSelectedFile(file);
-    const previewUrl = URL.createObjectURL(file);
-    setCurrentImage(previewUrl);
-    clearResults();
-    clearSam2Results();
+    setImageUrl('');
+    setInputMethod('file');
+    setCurrentImage(URL.createObjectURL(file));
   };
 
   const handleImageUrlChange = (url: string): void => {
     setImageUrl(url);
-    if (url.trim()) {
-      setCurrentImage(url.trim());
-      setSelectedFile(null);
-      clearResults();
-      clearSam2Results();
-    }
+    setSelectedFile(null);
+    setInputMethod('url');
+    setCurrentImage(url);
   };
 
-  const handleAnalyze = async (e: React.FormEvent): Promise<void> => {
+  const handleQwenAnalyze = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
-    
-    if (analysisMode === 'sam2') {
-      // Use SAM 2 for segmentation
-      await sam2SegmentImage(selectedFile, imageUrl, sam2Mode);
-    } else {
-      // Use existing Qwen-VL analysis
-      await analyzeImage(selectedFile, imageUrl, analysisMode, selectedModel);
-    }
+    await analyzeImage(selectedFile, imageUrl, 'detection', 'qwen');
+  };
+
+  const handleOpenaiAnalyze = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    await analyzeImage(selectedFile, imageUrl, 'detection', 'openai');
   };
 
   const handleExampleImage = (): void => {
@@ -83,18 +126,14 @@ export default function Home(): React.JSX.Element {
     setCurrentImage(EXAMPLE_IMAGE_URL);
     setSelectedFile(null);
     setInputMethod('url');
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
   };
 
   const clearImage = (): void => {
-    setImageUrl('');
     setSelectedFile(null);
+    setImageUrl('');
     setCurrentImage('');
-    clearResults();
-    clearSam2Results();
     setSelectedBoxIndices(new Set());
+    clearResults();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -106,7 +145,6 @@ export default function Home(): React.JSX.Element {
       if (newSet.has(index)) {
         newSet.delete(index);
       } else {
-        newSet.clear(); // Only show one box at a time
         newSet.add(index);
       }
       return newSet;
@@ -117,166 +155,157 @@ export default function Home(): React.JSX.Element {
     setSelectedBoxIndices(new Set());
   };
 
-  // Determine current loading state and error
-  const isLoading = loading || sam2Loading;
-  const currentError = error || sam2Error;
+  const handleSignOut = async (): Promise<void> => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setUserProfile(null);
+    window.location.reload(); // Force reload to ensure session cleared and login prompt shown
+  };
 
+  const handleAuthSuccess = (): void => {
+    // Auth success is handled by the useEffect listener
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <AuthComponent onAuthSuccess={handleAuthSuccess} />
+        </div>
+      </div>
+    );
+  }
+
+  if (showAnalytics) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold text-gray-800">Analytics Dashboard</h1>
+            <button
+              onClick={() => setShowAnalytics(false)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Back to Analysis
+            </button>
+          </div>
+          <AnalyticsDashboard />
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-      <div className="container mx-auto px-2 py-4 max-w-[95vw]">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <Header />
-        </motion.div>
+    <BoxSelectionProvider
+      boxes={boxes}
+      selectedBoxIndices={selectedBoxIndices}
+      onToggleBox={toggleBoxSelection}
+    >
+      <div className="min-h-screen bg-gray-50">
+        <Header />
         
-        {/* Top Section - Input, Options, API Usage, and Analyze Button */}
-        <motion.div 
-          className="mb-4"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-        >
-          <div className="grid xl:grid-cols-3 gap-4">
-            <div className="xl:col-span-1">
+        <div className="container mx-auto px-4 py-8">
+          <UserNav 
+            user={user} 
+            userProfile={userProfile} 
+            onSignOut={handleSignOut}
+            onShowAnalytics={() => setShowAnalytics(true)}
+          />
+          
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Left Column - Input and Options */}
+            <div className="lg:col-span-1 space-y-6">
+              {/* Image Input */}
               <ImageInputCard
+                selectedFile={selectedFile}
+                imageUrl={imageUrl}
                 inputMethod={inputMethod}
                 setInputMethod={setInputMethod}
-                imageUrl={imageUrl}
-                selectedFile={selectedFile}
-                fileInputRef={fileInputRef}
                 onFileSelect={handleFileSelect}
                 onImageUrlChange={handleImageUrlChange}
                 onExampleImage={handleExampleImage}
+                fileInputRef={fileInputRef}
               />
-            </div>
             
-            <div className="xl:col-span-1">
-              <OptionsCard
-                analysisMode={analysisMode}
-                selectedModel={selectedModel}
-                sam2Mode={sam2Mode}
-                sam2ServiceAvailable={sam2ServiceAvailable}
-                onAnalysisModeChange={setAnalysisMode}
-                onModelChange={setSelectedModel}
-                onSam2ModeChange={setSam2Mode}
-                onCheckSam2Health={checkSam2Health}
-              />
-            </div>
-            
-            <div className="xl:col-span-1 space-y-4">
-              <RateLimitCounter
-                remaining={rateLimitInfo?.remaining}
-                total={10}
-                resetTime={rateLimitInfo ? new Date(rateLimitInfo.resetTime).getTime() : undefined}
-              />
-              <ActionButtons
-                loading={isLoading}
-                hasInput={!!(selectedFile || imageUrl)}
-                analysisMode={analysisMode}
-                onAnalyze={handleAnalyze}
+              {/* API Provider Buttons */}
+              <ApiProviderButtons
+                loading={loading}
+                hasInput={hasInput}
+                onQwenAnalyze={handleQwenAnalyze}
+                onOpenaiAnalyze={handleOpenaiAnalyze}
                 onClearImage={clearImage}
               />
+
+              {/* Rate Limit Info */}
+              {userProfile && (
+                <UserLimitCard userProfile={userProfile} />
+              )}
             </div>
-          </div>
-        </motion.div>
-        
-        {/* Main Content Section */}
-        <BoxSelectionProvider
-          boxes={analysisMode === 'detection' ? boxes : []}
-          selectedBoxIndices={selectedBoxIndices}
-          onToggleBox={toggleBoxSelection}
-        >
-          <motion.div 
-            className="grid xl:grid-cols-3 gap-4"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-          >
-            {/* Sticky Image Section - Spans Two Columns */}
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, delay: 0.5 }}
-              className="xl:col-span-2"
-            >
-              <div className="sticky top-4">
+
+            {/* Right Column - Image Display and Results */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Image Display */}
+              {currentImage && (
                 <ImageDisplayCard
                   currentImage={currentImage}
-                  boxes={analysisMode === 'detection' ? boxes : []}
-                  segments={analysisMode === 'segmentation' ? segments : []}
-                  sam2Masks={analysisMode === 'sam2' ? sam2Masks : []}
-                  analysisMode={analysisMode}
+                  boxes={boxes}
+                  segments={segments}
                   selectedBoxIndices={selectedBoxIndices}
                   onToggleBox={toggleBoxSelection}
                   onClearSelection={clearBoxSelection}
                 />
-              </div>
-            </motion.div>
+              )}
             
-            {/* Scrollable Analysis Section - Right Column */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, delay: 0.6 }}
-              className="xl:col-span-1"
-            >
+              {/* Analysis Results */}
               <AnalysisSection
-                loading={isLoading}
-                error={currentError}
+                loading={loading}
+                error={error}
                 description={description}
                 usage={usage}
-                boxes={analysisMode === 'detection' ? boxes : []}
-                segments={analysisMode === 'segmentation' ? segments : []}
-                sam2Masks={analysisMode === 'sam2' ? sam2Masks : []}
+                boxes={boxes}
+                segments={segments}
                 selectedBoxIndices={selectedBoxIndices}
               />
-            </motion.div>
-          </motion.div>
-        </BoxSelectionProvider>
-        
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.7 }}
-        >
-          <InstructionsSection />
-        </motion.div>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </BoxSelectionProvider>
   );
 }
 
-/**
- * Application header component
- */
 const Header: React.FC = () => (
-  <div className="text-center mb-6">
-    <div className="inline-flex items-center gap-3 mb-3">
-      <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center">
-        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
+  <header className="bg-white shadow-sm border-b border-gray-200">
+    <div className="container mx-auto px-4 py-0.375">
+      <div className="flex items-center space-x-4">
+        <Image
+          src="/scraplens_logo_trans.png"
+          alt="scraplens.ai logo"
+          width={180}
+          height={180}
+          className="rounded-lg"
+          priority
+        />
+        <h1 className="text-3xl md:text-4xl font-extrabold text-gray-800 leading-tight">
+          ScrapLens AI: <span className="block md:inline">Scrap Analysis using AI</span>
+        </h1>
       </div>
-      <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-        AI Image Analyzer
-      </h1>
     </div>
-    <p className="text-lg text-gray-600 mb-4">
-      Powered by Alibaba Cloud Qwen-VL-Max with Object Detection & Segmentation
-    </p>
-    <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-full">
-      <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-      <span className="text-sm font-medium text-emerald-700">AI Ready</span>
-    </div>
-  </div>
+  </header>
 );
 
-/**
- * Analysis section props interface
- */
 interface AnalysisSectionProps {
   loading: boolean;
   error: string;
@@ -284,13 +313,9 @@ interface AnalysisSectionProps {
   usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
   segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
-  sam2Masks: SAM2Mask[];
   selectedBoxIndices: Set<number>;
 }
 
-/**
- * Analysis section for scrollable content
- */
 const AnalysisSection: React.FC<AnalysisSectionProps> = ({
   loading,
   error,
@@ -298,265 +323,174 @@ const AnalysisSection: React.FC<AnalysisSectionProps> = ({
   usage,
   boxes,
   segments,
-  sam2Masks,
   selectedBoxIndices,
 }) => (
   <div className="space-y-6">
     {loading && <LoadingCard />}
     {error && <ErrorCard error={error} />}
-    {description && <AnalysisResultsCard description={description} usage={usage} boxes={boxes} segments={segments} sam2Masks={sam2Masks} selectedBoxIndices={selectedBoxIndices} />}
+    {description && <AnalysisResultsCard description={description} usage={usage} boxes={boxes} segments={segments} selectedBoxIndices={selectedBoxIndices} />}
   </div>
 );
 
-const OptionsCard: React.FC<{ 
-  analysisMode: AnalysisMode; 
-  selectedModel: ModelType;
-  sam2Mode: SAM2Mode;
-  sam2ServiceAvailable: boolean;
-  onAnalysisModeChange: (mode: AnalysisMode) => void; 
-  onModelChange: (model: ModelType) => void;
-  onSam2ModeChange: (mode: SAM2Mode) => void;
-  onCheckSam2Health: () => Promise<boolean>;
-}> = ({ 
-  analysisMode, 
-  selectedModel, 
-  sam2Mode, 
-  sam2ServiceAvailable,
-  onAnalysisModeChange, 
-  onModelChange, 
-  onSam2ModeChange,
-  onCheckSam2Health
-}) => (
-  <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-    <h3 className="text-lg font-semibold text-gray-800 mb-4">Analysis Options</h3>
-    <div className="space-y-4">
-      <div className="space-y-3">
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="radio"
-            name="analysisMode"
-            value="detection"
-            checked={analysisMode === 'detection'}
-            onChange={() => onAnalysisModeChange('detection')}
-            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
-          />
-          <div>
-            <span className="font-medium text-gray-700">Object Detection</span>
-            <p className="text-sm text-gray-500">Detect objects with bounding boxes and coordinates</p>
-          </div>
-        </label>
-        
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="radio"
-            name="analysisMode"
-            value="segmentation"
-            checked={analysisMode === 'segmentation'}
-            onChange={() => onAnalysisModeChange('segmentation')}
-            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
-          />
-          <div>
-            <span className="font-medium text-gray-700">Segmentation (Qwen-VL)</span>
-            <p className="text-sm text-gray-500">Segment objects with precise boundaries and pixel coverage</p>
-          </div>
-        </label>
-
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="radio"
-            name="analysisMode"
-            value="sam2"
-            checked={analysisMode === 'sam2'}
-            onChange={() => onAnalysisModeChange('sam2')}
-            className="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 focus:ring-green-500"
-          />
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-gray-700">SAM 2 Segmentation</span>
-              <div className={`w-2 h-2 rounded-full ${sam2ServiceAvailable ? 'bg-green-400' : 'bg-red-400'}`} />
-              <span className={`text-xs ${sam2ServiceAvailable ? 'text-green-600' : 'text-red-600'}`}>
-                {sam2ServiceAvailable ? 'Available' : 'Offline'}
-              </span>
-            </div>
-            <p className="text-sm text-gray-500">High-precision segmentation using Meta's SAM 2</p>
-            {!sam2ServiceAvailable && (
-              <button
-                onClick={onCheckSam2Health}
-                className="text-xs text-blue-600 hover:text-blue-800 underline mt-1"
-              >
-                Check Service Status
-              </button>
-            )}
-          </div>
-        </label>
-      </div>
-      
-      {analysisMode === 'detection' && (
-        <div className="pt-2 border-t border-gray-200">
-          <ModelSelector
-            selectedModel={selectedModel}
-            onModelChange={onModelChange}
-            disabled={false}
-          />
-        </div>
-      )}
-
-      {analysisMode === 'sam2' && (
-        <div className="pt-2 border-t border-gray-200">
-          <SAM2ModeSelector
-            selectedMode={sam2Mode}
-            onModeChange={onSam2ModeChange}
-            disabled={!sam2ServiceAvailable}
-          />
-        </div>
-      )}
-    </div>
-  </div>
-);
-
-const ActionButtons: React.FC<{
+const ApiProviderButtons: React.FC<{
   loading: boolean;
   hasInput: boolean;
-  analysisMode: AnalysisMode;
-  onAnalyze: (e: React.FormEvent) => void;
+  onQwenAnalyze: (e: React.FormEvent) => void;
+  onOpenaiAnalyze: (e: React.FormEvent) => void;
   onClearImage: () => void;
-}> = ({ loading, hasInput, analysisMode, onAnalyze, onClearImage }) => (
-  <div className="flex gap-3">
-    <button
-      onClick={onAnalyze}
-      disabled={loading || !hasInput}
-      className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 px-6 rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl"
-    >
-      {loading ? (
-        <span className="flex items-center justify-center gap-2">
-          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-          Analyzing...
-        </span>
-      ) : (
-        `🔍 ${analysisMode === 'segmentation' ? 'Segment Image' : 'Detect Objects'}`
-      )}
-    </button>
+}> = ({ loading, hasInput, onQwenAnalyze, onOpenaiAnalyze, onClearImage }) => (
+  <motion.div
+    initial={{ opacity: 0, x: -20 }}
+    animate={{ opacity: 1, x: 0 }}
+    transition={{ duration: 0.5, delay: 0.2 }}
+    className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6"
+  >
+    <h3 className="text-lg font-semibold text-gray-800 mb-4">AI Analysis Provider</h3>
     
-    {hasInput && (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <button
+          onClick={onQwenAnalyze}
+          disabled={loading || !hasInput}
+          className="flex items-center justify-center px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {loading ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Analyzing...
+            </>
+          ) : (
+            <>
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+              Granular/In-depth Analysis
+            </>
+          )}
+        </button>
+        
+        <button
+          onClick={onOpenaiAnalyze}
+          disabled={loading || !hasInput}
+          className="flex items-center justify-center px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {loading ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Analyzing...
+            </>
+          ) : (
+            <>
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Generic Taxonomy
+            </>
+          )}
+        </button>
+      </div>
+      
       <button
         onClick={onClearImage}
-        className="px-4 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition-colors"
+        className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
       >
-        ✕
+        Clear Image
       </button>
-    )}
-  </div>
+    </div>
+  </motion.div>
 );
 
 const ImageDisplayCard: React.FC<{
   currentImage: string;
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
   segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
-  sam2Masks: SAM2Mask[];
-  analysisMode: AnalysisMode;
   selectedBoxIndices: Set<number>;
   onToggleBox: (index: number) => void;
   onClearSelection: () => void;
-}> = ({ currentImage, boxes, segments, sam2Masks, analysisMode, selectedBoxIndices, onToggleBox, onClearSelection }) => {
-  const hasResults = (analysisMode === 'detection' && boxes.length > 0) || 
-                     (analysisMode === 'segmentation' && segments.length > 0) ||
-                     (analysisMode === 'sam2' && sam2Masks.length > 0);
+}> = ({ currentImage, boxes, segments, selectedBoxIndices, onClearSelection }) => {
+  const hasResults = boxes.length > 0 || segments.length > 0;
   
   const getDisplayTitle = () => {
-    if (analysisMode === 'sam2') return 'SAM 2 Segmentation';
-    if (analysisMode === 'segmentation') return 'Segmentation';
     return 'Object Detection';
   };
   
   return (
-    <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold text-gray-800">
-          Image {hasResults && `+ ${getDisplayTitle()}`}
-        </h3>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.1 }}
+      className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6"
+    >
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-gray-800">{getDisplayTitle()}</h3>
+        {hasResults && (
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-600">
+              {selectedBoxIndices.size > 0 ? `${selectedBoxIndices.size} selected` : 'Click objects to select'}
+            </span>
         {selectedBoxIndices.size > 0 && (
           <button
             onClick={onClearSelection}
-            className="text-sm text-blue-600 hover:text-blue-800 underline"
+                className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded"
           >
-            Show All {analysisMode === 'sam2' ? 'Masks' : analysisMode === 'segmentation' ? 'Segments' : 'Boxes'}
+                Clear Selection
           </button>
+            )}
+            <span className="text-sm text-gray-500">
+              Show All Boxes
+            </span>
+          </div>
         )}
       </div>
-      <div className="flex justify-center">
+
+      <div className="relative">
         <ImageCanvas 
           imageUrl={currentImage} 
-          boxes={analysisMode === 'detection' ? (selectedBoxIndices.size > 0 ? boxes.filter((_, index) => selectedBoxIndices.has(index)) : boxes) : []}
-          segments={analysisMode === 'segmentation' ? (selectedBoxIndices.size > 0 ? segments.filter((_, index) => selectedBoxIndices.has(index)) : segments) : []}
+          boxes={boxes}
+          segments={[]}
+          selectedBoxIndices={selectedBoxIndices}
         />
       </div>
-      <ObjectDetectionSummary 
-        boxes={analysisMode === 'detection' ? boxes : []}
-        segments={analysisMode === 'segmentation' ? segments : []}
-        selectedBoxIndices={selectedBoxIndices}
-        onToggleBox={onToggleBox}
-      />
-      {analysisMode === 'sam2' && sam2Masks.length > 0 && (
-        <div className="mt-4">
-          <h4 className="text-md font-semibold text-gray-700 mb-2">SAM 2 Masks ({sam2Masks.length})</h4>
-          <div className="grid grid-cols-2 gap-2">
-            {sam2Masks.map((mask, index) => (
-              <div key={mask.id} className="bg-gray-50 rounded-lg p-2">
-                <div className="text-xs text-gray-600">
-                  Mask {mask.id + 1} - Score: {(mask.score * 100).toFixed(1)}%
-                </div>
-                <div className="text-xs text-gray-500">
-                  Area: {mask.area.toLocaleString()} pixels
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+    </motion.div>
   );
 };
 
 const LoadingCard: React.FC = () => (
   <motion.div 
-    className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6"
-    initial={{ opacity: 0, scale: 0.95 }}
-    animate={{ opacity: 1, scale: 1 }}
-    transition={{ duration: 0.3 }}
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.5, delay: 0.2 }}
+    className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6"
   >
-    <div className="flex items-center justify-center space-x-2">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      <motion.span 
-        className="text-lg text-gray-600"
-        animate={{ opacity: [0.5, 1, 0.5] }}
-        transition={{ duration: 1.5, repeat: Infinity }}
-      >
-        Analyzing image(s)...
-      </motion.span>
+    <div className="flex items-center space-x-3">
+      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+      <span className="text-gray-600">Analyzing image...</span>
     </div>
   </motion.div>
 );
 
 const ErrorCard: React.FC<{ error: string }> = ({ error }) => (
   <motion.div 
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.5, delay: 0.2 }}
     className="bg-red-50 border border-red-200 rounded-2xl p-6"
-    initial={{ opacity: 0, scale: 0.95, x: -20 }}
-    animate={{ opacity: 1, scale: 1, x: 0 }}
-    transition={{ duration: 0.4, type: "spring", stiffness: 300 }}
   >
-    <div className="flex items-center gap-3">
-      <motion.div 
-        className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center"
-        animate={{ rotate: [0, 10, -10, 0] }}
-        transition={{ duration: 0.5, delay: 0.2 }}
-      >
-        <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div className="flex items-center space-x-3">
+      <div className="flex-shrink-0">
+        <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-      </motion.div>
-      <div>
-        <h3 className="font-semibold text-red-800">Analysis Failed</h3>
-        <p className="text-red-700 text-sm">{error}</p>
+      </div>
+      <div className="flex-1">
+        <h3 className="text-sm font-medium text-red-800">Analysis Error</h3>
+        <p className="mt-1 text-sm text-red-700">{error}</p>
       </div>
     </div>
   </motion.div>
@@ -567,157 +501,503 @@ const AnalysisResultsCard: React.FC<{
   usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
   segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
-  sam2Masks: SAM2Mask[];
   selectedBoxIndices: Set<number>;
-}> = ({ description, usage, boxes, segments, sam2Masks, selectedBoxIndices }) => {
-  
-  // Function to highlight text based on selected objects (works for both boxes and segments)
-  const highlightSelectedObjects = (text: string): string => {
-    if (selectedBoxIndices.size === 0) return text;
-    
-    let highlightedText = text;
-    
-    // For each selected item, highlight its label and relevant info
-    selectedBoxIndices.forEach(index => {
-      // Handle both boxes and segments
-      const box = boxes[index];
-      const segment = segments[index];
-      
-      if (box) {
-        // Highlight the object label (case insensitive)
-        const cleanLabel = box.label.replace(/^plaintext\s*/i, "");
-        const labelRegex = new RegExp(`(${cleanLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-        highlightedText = highlightedText.replace(labelRegex, '<mark class="bg-blue-200 text-blue-900 px-1 rounded">$1</mark>');
-        
-        // For bounding boxes, highlight coordinates
-        const coordString = `[${box.x}, ${box.y}, ${box.width}, ${box.height}]`;
-        const coordRegex = new RegExp(`\\[${box.x},\\s*${box.y},\\s*${box.width},\\s*${box.height}\\]`, 'g');
-        highlightedText = highlightedText.replace(coordRegex, `<mark class="bg-yellow-200 text-yellow-900 px-1 rounded font-mono text-xs">${coordString}</mark>`);
-      }
-      
-      if (segment) {
-        // Highlight the object label (case insensitive)
-        const cleanLabel = segment.label.replace(/^plaintext\s*/i, "");
-        const labelRegex = new RegExp(`(${cleanLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-        highlightedText = highlightedText.replace(labelRegex, '<mark class="bg-blue-200 text-blue-900 px-1 rounded">$1</mark>');
-        
-        // For segments, highlight pixel coverage if available
-        if (segment.pixelCoverage !== undefined && segment.pixelCoverage !== null) {
-          const coverageRegex = new RegExp(`(${segment.pixelCoverage.toFixed(1)}%|${Math.round(segment.pixelCoverage)}%)`, 'g');
-          highlightedText = highlightedText.replace(coverageRegex, '<mark class="bg-green-200 text-green-900 px-1 rounded font-mono text-xs">$1</mark>');
-        }
-      }
-    });
-    
-    return highlightedText;
-  };
-
+}> = ({ description, usage, boxes, segments, selectedBoxIndices }) => {
   return (
-    <motion.div 
-      className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6"
-      initial={{ opacity: 0, y: 20, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.5, type: "spring", stiffness: 200 }}
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.3 }}
+      className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6"
     >
-      <motion.div 
-        className="flex items-center gap-3 mb-4"
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.4, delay: 0.2 }}
-      >
-        <motion.div 
-          className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-600 rounded-xl flex items-center justify-center"
-          whileHover={{ scale: 1.1, rotate: 5 }}
-          transition={{ type: "spring", stiffness: 400 }}
-        >
-          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a9 9 0 117.072 0l-.548.547A3.374 3.374 0 0014.846 21H9.154a3.374 3.374 0 00-2.53-1.098l-.548-.549z" />
-          </svg>
-        </motion.div>
-        <div>
-          <h3 className="text-lg font-bold text-gray-800">AI Analysis</h3>
-          <p className="text-xs text-gray-600">
-            {segments.length > 0 ? 'Detailed segmentation and pixel coverage' : 'Detailed object detection and description'}
-          </p>
-        </div>
-      </motion.div>
+      <h3 className="text-lg font-semibold text-gray-800 mb-4">Analysis Results</h3>
       
-      <div className="prose prose-slate max-w-none text-gray-700 leading-relaxed text-sm">
-        <div 
-          dangerouslySetInnerHTML={{ 
-            __html: highlightSelectedObjects(description)
-              .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-800">$1</strong>')
-              .replace(/### (.*?)(\n|$)/g, '<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2 flex items-center gap-2"><span class="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>$1</h3>')
-              .replace(/#### (.*?)(\n|$)/g, '<h4 class="text-sm font-medium text-gray-700 mt-3 mb-1">$1</h4>')
-              .replace(/^\* (.*?)(\n|$)/gm, '<li class="text-gray-600 text-sm ml-4">$1</li>')
-              .replace(/```([\s\S]*?)```/g, '<pre class="bg-gray-100 rounded p-2 overflow-x-auto my-2"><code>$1</code></pre>')
-              .replace(/((\[\d+,\s*\d+\](,?\s*)?)+)/g, '<pre class="bg-gray-100 rounded p-2 overflow-x-auto my-2"><code>$1</code></pre>')
-              .replace(/\n\n/g, '</p><p class="mb-2 text-gray-700 leading-relaxed text-sm">')
-              .replace(/^(?!<[hlp])/gm, '<p class="mb-2 text-gray-700 leading-relaxed text-sm">')
-              .replace(/$(?!<\/p>)/gm, '</p>')
-          }}
+      <div className="space-y-6">
+        {/* Interactive Scene Description */}
+        <InteractiveSceneDescription 
+          description={description}
+          boxes={boxes}
+          selectedBoxIndices={selectedBoxIndices}
         />
-      </div>
-      
-      {usage && (
-        <div className="mt-4 pt-3 border-t border-gray-200">
-          <h4 className="text-xs font-semibold text-gray-600 mb-2">API Usage</h4>
-          <div className="grid grid-cols-3 gap-2">
-            <div className="text-center p-2 bg-gray-50 rounded-lg">
-              <div className="text-sm font-bold text-gray-800">{isNaN(usage.prompt_tokens || 0) ? 0 : (usage.prompt_tokens || 0)}</div>
-              <div className="text-xs text-gray-500">Prompt</div>
+
+        {/* Object Detection Summary */}
+        {boxes.length > 0 && (
+          <div className="mt-6 p-5 bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl border border-gray-200">
+            <div className="flex items-center gap-2 mb-4">
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                />
+              </svg>
+              <h4 className="font-semibold text-gray-800">
+                Detected Objects ({boxes.length})
+              </h4>
             </div>
-            <div className="text-center p-2 bg-gray-50 rounded-lg">
-              <div className="text-sm font-bold text-gray-800">{isNaN(usage.completion_tokens || 0) ? 0 : (usage.completion_tokens || 0)}</div>
-              <div className="text-xs text-gray-500">Response</div>
-            </div>
-            <div className="text-center p-2 bg-blue-50 rounded-lg">
-              <div className="text-sm font-bold text-blue-600">{isNaN(usage.total_tokens || 0) ? 0 : (usage.total_tokens || 0)}</div>
-              <div className="text-xs text-blue-500">Total</div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {boxes.map((box, index) => (
+                <DetectedObjectCard 
+                  key={`${box.label}-${index}`} 
+                  box={box} 
+                  index={index} 
+                  isSelected={selectedBoxIndices.has(index)}
+                  onToggleSelection={() => {
+                    const newSet = new Set(selectedBoxIndices);
+                    if (newSet.has(index)) {
+                      newSet.delete(index);
+                    } else {
+                      newSet.add(index);
+                    }
+                    // This would need to be passed from parent
+                  }}
+                />
+              ))}
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Usage Statistics */}
+        {usage && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-700 mb-2">Token Usage</h4>
+            <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+              {usage.prompt_tokens && (
+                <span>Prompt: {usage.prompt_tokens.toLocaleString()}</span>
+              )}
+              {usage.completion_tokens && (
+                <span>Response: {usage.completion_tokens.toLocaleString()}</span>
+              )}
+              {usage.total_tokens && (
+                <span>Total: {usage.total_tokens.toLocaleString()}</span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </motion.div>
   );
 };
 
-const InstructionsSection: React.FC = () => (
-  <div className="mt-12 bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
-    <h3 className="text-xl font-semibold text-gray-800 mb-4">How to Use</h3>
-    <div className="grid md:grid-cols-2 gap-6">
-      <div>
-        <h4 className="font-medium text-gray-700 mb-2">📁 File Upload</h4>
-        <ul className="space-y-1 text-gray-600 text-sm">
-          <li>• Upload images directly from your device</li>
-          <li>• Supports JPEG, PNG, WebP, GIF (up to 10MB)</li>
-          <li>• Drag & drop or click to browse</li>
-        </ul>
+const InteractiveSceneDescription: React.FC<{
+  description: string;
+  boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
+  selectedBoxIndices: Set<number>;
+}> = ({ description, boxes, selectedBoxIndices }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Parse scrap items from the OpenAI structured response
+  const parseScrapItems = (desc: string) => {
+    const items: Array<{type: string, category: string}> = [];
+    
+    // Try to parse the new OpenAI format: "**type**: category"
+    const matches = desc.match(/\*\*([^*]+)\*\*:\s*([^\n]+)/g);
+    if (matches) {
+      matches.forEach(match => {
+        const [, type, category] = match.match(/\*\*([^*]+)\*\*:\s*([^\n]+)/) || [];
+        if (type && category) {
+          items.push({ type: type.trim(), category: category.trim() });
+        }
+      });
+    }
+    
+    return items;
+  };
+
+  const scrapItems = parseScrapItems(description);
+
+  // Create taxonomy tree structure
+  const createTaxonomyTree = (items: Array<{type: string, category: string}>) => {
+    const tree: {
+      ferrous: {
+        HMS: Array<{type: string, category: string}>,
+        'P&S': Array<{type: string, category: string}>,
+        Pipe: Array<{type: string, category: string}>
+      },
+      nonFerrous: {
+        Copper: Array<{type: string, category: string}>,
+        Motors: Array<{type: string, category: string}>,
+        Transformers: Array<{type: string, category: string}>
+      }
+    } = {
+      ferrous: { HMS: [], 'P&S': [], Pipe: [] },
+      nonFerrous: { Copper: [], Motors: [], Transformers: [] }
+    };
+
+    items.forEach(item => {
+      const category = item.category.toLowerCase();
+      
+      // Ferrous classifications
+      if (category.includes('rebar') || category.includes('hms')) {
+        tree.ferrous.HMS.push(item);
+      } else if (category.includes('p&s')) {
+        tree.ferrous['P&S'].push(item);
+      } else if (category.includes('pipe')) {
+        tree.ferrous.Pipe.push(item);
+      }
+      // Non-ferrous classifications
+      else if (category.includes('copper')) {
+        tree.nonFerrous.Copper.push(item);
+      } else if (category.includes('motor')) {
+        tree.nonFerrous.Motors.push(item);
+      } else if (category.includes('transformer')) {
+        tree.nonFerrous.Transformers.push(item);
+      }
+      // Default to HMS if uncertain
+      else {
+        tree.ferrous.HMS.push(item);
+      }
+    });
+
+    return tree;
+  };
+
+  const taxonomyTree = createTaxonomyTree(scrapItems);
+
+  // Count total items
+  const totalFerrous = Object.values(taxonomyTree.ferrous).flat().length;
+  const totalNonFerrous = Object.values(taxonomyTree.nonFerrous).flat().length;
+
+  return (
+    <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-100">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h4 className="font-semibold text-gray-800 text-lg">Scrap Metal Analysis</h4>
+      </div>
+
+      <div className="space-y-6">
+        {scrapItems.length > 0 ? (
+          <div className="space-y-4">
+            {/* Ferrous Metals Tree */}
+            {totalFerrous > 0 && (
+              <div className="bg-white rounded-lg p-4 border border-gray-200">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-4 h-4 bg-orange-500 rounded-full"></div>
+                  <h5 className="font-bold text-gray-800 text-lg">Ferrous ({totalFerrous})</h5>
+                </div>
+                
+                <div className="space-y-3 ml-6">
+                  {/* HMS Section */}
+                  {taxonomyTree.ferrous.HMS.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-3 h-3 bg-orange-400 rounded-full"></div>
+                        <h6 className="font-semibold text-gray-700">HMS</h6>
+                      </div>
+                      <div className="ml-6 space-y-1">
+                        {taxonomyTree.ferrous.HMS.map((item, index) => (
+                          <div key={index} className="flex items-center gap-2 p-2 bg-orange-50 rounded border border-orange-200">
+                            <div className="w-2 h-2 bg-orange-300 rounded-full"></div>
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-800 text-sm"><ClickableMarkdown>{item.category}</ClickableMarkdown></div>
+                              <div className="text-xs text-gray-600"><ClickableMarkdown>{item.type}</ClickableMarkdown></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* P&S Section */}
+                  {taxonomyTree.ferrous['P&S'].length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-3 h-3 bg-orange-400 rounded-full"></div>
+                        <h6 className="font-semibold text-gray-700">P&S</h6>
+                      </div>
+                      <div className="ml-6 space-y-1">
+                        {taxonomyTree.ferrous['P&S'].map((item, index) => (
+                          <div key={index} className="flex items-center gap-2 p-2 bg-orange-50 rounded border border-orange-200">
+                            <div className="w-2 h-2 bg-orange-300 rounded-full"></div>
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-800 text-sm"><ClickableMarkdown>{item.category}</ClickableMarkdown></div>
+                              <div className="text-xs text-gray-600"><ClickableMarkdown>{item.type}</ClickableMarkdown></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pipe Section */}
+                  {taxonomyTree.ferrous.Pipe.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-3 h-3 bg-orange-400 rounded-full"></div>
+                        <h6 className="font-semibold text-gray-700">Pipe</h6>
+                      </div>
+                      <div className="ml-6 space-y-1">
+                        {taxonomyTree.ferrous.Pipe.map((item, index) => (
+                          <div key={index} className="flex items-center gap-2 p-2 bg-orange-50 rounded border border-orange-200">
+                            <div className="w-2 h-2 bg-orange-300 rounded-full"></div>
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-800 text-sm"><ClickableMarkdown>{item.category}</ClickableMarkdown></div>
+                              <div className="text-xs text-gray-600"><ClickableMarkdown>{item.type}</ClickableMarkdown></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Non-Ferrous Metals Tree */}
+            {totalNonFerrous > 0 && (
+              <div className="bg-white rounded-lg p-4 border border-gray-200">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+                  <h5 className="font-bold text-gray-800 text-lg">Non-Ferrous ({totalNonFerrous})</h5>
+                </div>
+                
+                <div className="space-y-3 ml-6">
+                  {/* Copper Section */}
+                  {taxonomyTree.nonFerrous.Copper.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-3 h-3 bg-green-400 rounded-full"></div>
+                        <h6 className="font-semibold text-gray-700">Copper</h6>
+                      </div>
+                      <div className="ml-6 space-y-1">
+                        {taxonomyTree.nonFerrous.Copper.map((item, index) => (
+                          <div key={index} className="flex items-center gap-2 p-2 bg-green-50 rounded border border-green-200">
+                            <div className="w-2 h-2 bg-green-300 rounded-full"></div>
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-800 text-sm"><ClickableMarkdown>{item.category}</ClickableMarkdown></div>
+                              <div className="text-xs text-gray-600"><ClickableMarkdown>{item.type}</ClickableMarkdown></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Motors Section */}
+                  {taxonomyTree.nonFerrous.Motors.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-3 h-3 bg-green-400 rounded-full"></div>
+                        <h6 className="font-semibold text-gray-700">Motors</h6>
+                      </div>
+                      <div className="ml-6 space-y-1">
+                        {taxonomyTree.nonFerrous.Motors.map((item, index) => (
+                          <div key={index} className="flex items-center gap-2 p-2 bg-green-50 rounded border border-green-200">
+                            <div className="w-2 h-2 bg-green-300 rounded-full"></div>
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-800 text-sm"><ClickableMarkdown>{item.category}</ClickableMarkdown></div>
+                              <div className="text-xs text-gray-600"><ClickableMarkdown>{item.type}</ClickableMarkdown></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Transformers Section */}
+                  {taxonomyTree.nonFerrous.Transformers.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-3 h-3 bg-green-400 rounded-full"></div>
+                        <h6 className="font-semibold text-gray-700">Transformers</h6>
+                      </div>
+                      <div className="ml-6 space-y-1">
+                        {taxonomyTree.nonFerrous.Transformers.map((item, index) => (
+                          <div key={index} className="flex items-center gap-2 p-2 bg-green-50 rounded border border-green-200">
+                            <div className="w-2 h-2 bg-green-300 rounded-full"></div>
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-800 text-sm"><ClickableMarkdown>{item.category}</ClickableMarkdown></div>
+                              <div className="text-xs text-gray-600"><ClickableMarkdown>{item.type}</ClickableMarkdown></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Fallback to original text display for non-structured responses */
+          <div className="text-gray-700 leading-relaxed">
+            <ClickableMarkdown>{description}</ClickableMarkdown>
+          </div>
+        )}
+
+        {/* Interactive Object Tags */}
+        {boxes.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-blue-200">
+            {boxes.map((box, index) => {
+              // Extract type and category from label format: "Type (Category)"
+              const labelMatch = box.label.match(/^(.+?)\s*\((.+?)\)$/);
+              const type = labelMatch ? labelMatch[1] : box.label;
+              const category = labelMatch ? labelMatch[2] : '';
+              
+              return (
+                <span
+                  key={`${box.label}-${index}`}
+                  className={`px-3 py-2 rounded-full text-sm font-medium cursor-pointer transition-all ${
+                    selectedBoxIndices.has(index)
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-white text-gray-700 hover:bg-blue-100 border border-gray-200'
+                  }`}
+                  title={category ? `Category: ${category}` : ''}
+                >
+                  <div className="flex flex-col items-center">
+                    <span className="font-semibold">{type}</span>
+                    {category && (
+                      <span className="text-xs opacity-75 mt-0.5">{category}</span>
+                    )}
+                  </div>
+                  {box.confidence && (
+                    <span className="ml-1 opacity-75">
+                      {(box.confidence * 100).toFixed(0)}%
+                    </span>
+                  )}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const DetectedObjectCard: React.FC<{
+  box: { label: string; x: number; y: number; width: number; height: number; confidence?: number };
+  index: number;
+  isSelected: boolean;
+  onToggleSelection: () => void;
+}> = ({ box, index, isSelected, onToggleSelection }) => {
+  const colors = [
+    '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+    '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
+  ];
+  const color = colors[index % colors.length];
+
+  return (
+    <div 
+      className={`flex items-center gap-3 p-3 rounded-lg shadow-sm border cursor-pointer transition-all hover:shadow-md ${
+        isSelected 
+          ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-200' 
+          : 'bg-white border-gray-100 hover:bg-gray-50'
+      }`}
+      onClick={onToggleSelection}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onToggleSelection()}
+    >
+      <div
+        className="w-4 h-4 rounded-full flex-shrink-0"
+        style={{ backgroundColor: color }}
+        aria-hidden="true"
+      />
+      <div className="flex-1 min-w-0">
+        <div className="font-medium text-gray-800 truncate" title={box.label}>
+          {box.label.replace(/^plaintext\s*/i, "")}
+        </div>
+        <div className="text-xs text-gray-500">
+          Position: ({box.x}, {box.y}) • Size: {box.width}×{box.height}
+          {box.confidence && (
+            <span className="ml-2 text-blue-600 font-medium">
+              {(box.confidence * 100).toFixed(0)}%
+            </span>
+          )}
+        </div>
+      </div>
+      {isSelected && (
+        <div className="text-blue-600">
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+          </svg>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const UserNav: React.FC<{
+  user: User;
+  userProfile: UserProfile | null;
+  onSignOut: () => void;
+  onShowAnalytics: () => void;
+}> = ({ user, userProfile, onSignOut, onShowAnalytics }) => (
+  <div className="flex items-center justify-between mb-8 p-4 bg-white rounded-xl border border-gray-200">
+    <div className="flex items-center space-x-3">
+      <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+        <span className="text-white font-medium text-sm">
+          {user.email?.charAt(0).toUpperCase()}
+        </span>
       </div>
       <div>
-        <h4 className="font-medium text-gray-700 mb-2">🔗 URL Input</h4>
-        <ul className="space-y-1 text-gray-600 text-sm">
-          <li>• Enter any publicly accessible image URL</li>
-          <li>• Use the example image for testing</li>
-          <li>• Perfect for online images</li>
-        </ul>
+        <p className="font-medium text-gray-800">{user.email}</p>
+        <p className="text-xs text-gray-500">
+          {userProfile?.subscription_tier || 'Free Plan'}
+        </p>
       </div>
-      <div>
-        <h4 className="font-medium text-gray-700 mb-2">🎯 Object Detection</h4>
-        <ul className="space-y-1 text-gray-600 text-sm">
-          <li>• Detect objects with bounding boxes</li>
-          <li>• Shows exact coordinates and sizes</li>
-          <li>• Click objects to highlight in analysis</li>
-        </ul>
-      </div>
-      <div>
-        <h4 className="font-medium text-gray-700 mb-2">🧩 Segmentation</h4>
-        <ul className="space-y-1 text-gray-600 text-sm">
-          <li>• Precise object boundaries with polygons</li>
-          <li>• Calculate pixel coverage percentages</li>
-          <li>• Perfect for detailed analysis</li>
-        </ul>
-      </div>
+    </div>
+    <div className="flex items-center space-x-2">
+      <button
+        onClick={onShowAnalytics}
+        className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+      >
+        📊 Analytics
+      </button>
+      <button
+        onClick={onSignOut}
+        className="px-3 py-1 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
+      >
+        Sign Out
+      </button>
     </div>
   </div>
 );
+
+const UserLimitCard: React.FC<{ userProfile: UserProfile }> = ({ userProfile }) => {
+  const limits = subscriptionLimits[userProfile.subscription_tier];
+  const dailyUsage = userProfile.api_usage_count || 0;
+  const monthlyUsage = userProfile.api_usage_count || 0; // Using same field since monthly isn't tracked separately
+  const usagePercentage = (dailyUsage / limits.daily_requests) * 100;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.3 }}
+      className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6"
+    >
+      <h3 className="text-lg font-semibold text-gray-800 mb-4">Usage Limits</h3>
+      
+      <div className="space-y-4">
+        <div>
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm text-gray-600">Daily Requests</span>
+            <span className="text-sm font-medium text-gray-800">
+              {dailyUsage}/{limits.daily_requests}
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${Math.min(usagePercentage, 100)}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="text-xs text-gray-500">
+          <p>Plan: {userProfile.subscription_tier}</p>
+          <p>Total Usage: {monthlyUsage}</p>
+          <p>Resets: Daily at midnight</p>
+        </div>
+      </div>
+    </motion.div>
+  );
+}; 

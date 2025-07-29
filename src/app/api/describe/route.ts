@@ -70,15 +70,73 @@ const generatePrompt = (enableBoundingBoxes: boolean, enableSegmentation: boolea
 };
 
 /**
+ * Checks if a label should be filtered out from object detection results
+ */
+const isUnwantedLabel = (label: string): boolean => {
+  const unwantedLabels = [
+    'overall scene',
+    'scene',
+    'overall',
+    'background',
+    'setting',
+    'environment',
+    'context',
+    'image',
+    'photo',
+    'picture',
+    'general scene',
+    'main scene',
+    'entire scene',
+    'full scene',
+    'complete scene',
+    'whole scene',
+    'scene description',
+    'scene analysis'
+  ]
+  
+  const cleanLabel = label.toLowerCase().trim()
+  
+  // Remove common prefixes that might interfere with filtering
+  const cleanedLabel = cleanLabel
+    .replace(/^plaintext\s*/i, '')
+    .replace(/^text\s*/i, '')
+    .replace(/^\d+\.\s*/, '')
+    .replace(/^[-*]\s*/, '')
+    .trim()
+  
+  return unwantedLabels.some(unwanted => 
+    cleanedLabel === unwanted || 
+    cleanedLabel.includes(unwanted) ||
+    cleanedLabel.startsWith(unwanted) ||
+    cleanedLabel.endsWith(unwanted)
+  )
+}
+
+/**
  * Processes bounding boxes and validates results
  */
-const processBoundingBoxes = (description: string, enableBoundingBoxes: boolean): BoundingBox[] => {
+const processBoundingBoxes = (
+  description: string, 
+  enableBoundingBoxes: boolean
+): BoundingBox[] => {
   if (!enableBoundingBoxes || !description) {
     return [];
   }
 
   const boxes = parseBoundingBoxes(description);
-  const validBoxes = boxes.filter(validateBoundingBox);
+      const validBoxes = boxes.filter(box => {
+      const isUnwanted = isUnwantedLabel(box.label)
+      const isValid = validateBoundingBox(box) && !isUnwanted
+      
+      if (isUnwanted) {
+        console.log(`Filtered out unwanted label: "${box.label}"`)
+      }
+      
+      if (!isValid) {
+        console.warn('Invalid bounding box detected:', box)
+      }
+      return isValid
+    });
 
   if (boxes.length > validBoxes.length) {
     console.warn(`Filtered out ${boxes.length - validBoxes.length} invalid bounding boxes`);
@@ -114,6 +172,128 @@ const processSegmentationPolygons = (
   console.log(`Processed ${segmentsWithCoverage.length} valid segmentation polygons from response`);
   return segmentsWithCoverage;
 };
+
+/**
+ * Cleans up AI response to create a readable scene description with markdown formatting
+ */
+const cleanSceneDescription = (description: string): string => {
+  if (!description || typeof description !== 'string') {
+    return 'Scene analysis completed successfully. Please check the detected objects section for detailed information about identified items in the image.'
+  }
+
+  // Step 1: Aggressively remove ALL problematic content patterns
+  let cleanedText = description
+    // Remove ALL [object Object] patterns (multiple variations)
+    .replace(/,\s*\[object Object\],?\s*/g, '')
+    .replace(/\[object Object\],?\s*/g, '')
+    .replace(/,\s*\[object Object\]/g, '')
+    .replace(/\[object Object\]/g, '')
+    // Remove ALL coordinate patterns
+    .replace(/\*\*[^*]+\*\*[^`]*`?\[[\d,\s]+\]`?(?:\s*\([\d%]+\))?/g, '')
+    .replace(/\[[\d,\s]+\]/g, '')
+    .replace(/\(\d+%\)/g, '')
+    // Remove polygon coordinates
+    .replace(/\[\([^)]+\)(,\([^)]+\))*\]/g, '')
+    // Remove structured section headers that cause issues
+    .replace(/###\s*Object Details[\s\S]*?(?=\n\n|$)/g, '')
+    .replace(/\*\*Bounding Box Coordinates\*\*:?[\s\S]*?(?=\n\n|$)/gi, '')
+    .replace(/\*\*Object Details\*\*:?[\s\S]*?(?=\n\n|$)/gi, '')
+    .replace(/\*\*Segmentation\*\*:?[\s\S]*?(?=\n\n|$)/gi, '')
+    // Remove Qwen-specific formatting
+    .replace(/###\s*\d+\.\s*/g, '')
+    .replace(/###\s*Summary[^:]*:/g, '')
+    .replace(/This analysis covers all[^.]*\./g, '')
+    .replace(/Here is a detailed analysis[^:]*:/g, '')
+    // Remove numbered object listings
+    .replace(/\d+\.\s*\*\*[^*]+\*\*:?[^.]*\./g, '')
+    .replace(/\d+\.\s*[^.]*\./g, '')
+    // Remove markdown formatting artifacts
+    .replace(/\*\*([^*]+)\*\*:\s*-\s*/g, '$1: ')
+    .replace(/\*\*([^*]+)\*\*:\s*/g, '$1: ')
+    .replace(/Position\*\*:|Color and Texture\*\*:/g, '')
+    .replace(/###\s*/g, '')
+    // Remove trailing formatting artifacts
+    .replace(/\s*-\s*,\s*/g, ' ')
+    .replace(/,\s*-\s*/g, ' ')
+    .replace(/:\s*-\s*/g, ': ')
+    .replace(/\s*:\s*,\s*/g, ', ')
+
+  // Step 2: Extract ONLY the main scene description (first meaningful paragraph)
+  const sentences = cleanedText.split(/[.!?]+/).filter(s => s.trim())
+  let sceneDescription = ''
+  
+  for (const sentence of sentences) {
+    const cleanSentence = sentence
+      .replace(/\s+/g, ' ')
+      .replace(/^[^A-Za-z]*/, '') // Remove leading non-letters
+      .trim()
+    
+    // Look for the first sentence that describes the actual scene
+    if (cleanSentence.length > 30 && 
+        !cleanSentence.includes('[') && 
+        !cleanSentence.includes(']') && 
+        !cleanSentence.includes('Position') &&
+        !cleanSentence.includes('Color and Texture') &&
+        !cleanSentence.includes('Object Details') &&
+        !cleanSentence.includes('Bounding Box') &&
+        !cleanSentence.includes('coordinates') &&
+        !cleanSentence.match(/^\d+\s/) &&
+        cleanSentence.match(/[A-Za-z]{3,}/)) {
+      
+      sceneDescription = cleanSentence
+      break
+    }
+  }
+
+  // Step 3: If no good description found, look for key descriptive phrases
+  if (!sceneDescription) {
+    // Look for scene description patterns
+    const scenePatterns = [
+      /This image shows ([^.]+)\./i,
+      /The scene depicts ([^.]+)\./i,
+      /The image contains ([^.]+)\./i,
+      /In this image, ([^.]+)\./i,
+      /The photograph shows ([^.]+)\./i
+    ]
+    
+    for (const pattern of scenePatterns) {
+      const match = cleanedText.match(pattern)
+      if (match && match[1]) {
+        sceneDescription = match[1].trim()
+        break
+      }
+    }
+  }
+
+  // Step 4: Final cleanup and formatting
+  if (sceneDescription) {
+    sceneDescription = sceneDescription
+      .replace(/\s+/g, ' ')
+      .replace(/\.\s*\./g, '.')
+      .replace(/\s*\.\s*/g, '. ')
+      .replace(/\s*,\s*/g, ', ')
+      .replace(/\s*:\s*/g, ': ')
+      .replace(/^[^A-Za-z]*/, '') // Remove leading non-letter characters
+      .trim()
+    
+    // Ensure it starts with a capital letter
+    if (sceneDescription.length > 0) {
+      sceneDescription = sceneDescription.charAt(0).toUpperCase() + sceneDescription.slice(1)
+    }
+    
+    // Ensure it ends with a period
+    if (!sceneDescription.endsWith('.') && !sceneDescription.endsWith('!') && !sceneDescription.endsWith('?')) {
+      sceneDescription += '.'
+    }
+    
+    return sceneDescription
+  }
+
+  // Step 5: Fallback description
+  return 'This image shows a complex scene with multiple objects and elements. The analysis has identified several key components and their relationships within the composition.'
+};
+
+
 
 /**
  * Main POST handler for image analysis
@@ -212,8 +392,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const boxes = processBoundingBoxes(description, enableBoundingBoxes);
     const segments = processSegmentationPolygons(description, enableSegmentation, imageWidth, imageHeight);
 
+    // Clean up description by removing coordinate data and creating a readable scene description  
+    const cleanDescription = cleanSceneDescription(description);
+
     return NextResponse.json({
-      description,
+      description: cleanDescription,
       boxes,
       segments,
       usage: completion.usage,

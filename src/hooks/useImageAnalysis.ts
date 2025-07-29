@@ -21,7 +21,7 @@ interface UseImageAnalysisReturn {
     file: File | null,
     imageUrl: string,
     analysisMode: AnalysisMode,
-    model?: ModelType,
+    apiProvider?: 'qwen' | 'openai',
     imageWidth?: number,
     imageHeight?: number
   ) => Promise<void>;
@@ -53,7 +53,7 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
     file: File | null,
     imageUrl: string,
     analysisMode: AnalysisMode,
-    model: ModelType = 'qwen-vl-max',
+    apiProvider: 'qwen' | 'openai' = 'qwen',
     imageWidth: number = 800,
     imageHeight: number = 600
   ): Promise<void> => {
@@ -96,11 +96,14 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
       
       formData.append('enableBoundingBoxes', enableBoundingBoxes.toString());
       formData.append('enableSegmentation', enableSegmentation.toString());
-      formData.append('model', model);
+      formData.append('model', (apiProvider === 'openai' ? 'gpt-4o-mini' : 'qwen-vl-max'));
       formData.append('imageWidth', imageWidth.toString());
       formData.append('imageHeight', imageHeight.toString());
 
-      const response = await axios.post<AnalysisResponse>('/api/describe', formData, {
+      // Select API endpoint based on provider
+      const apiEndpoint = apiProvider === 'openai' ? '/api/openai-analyze' : '/api/describe';
+
+      const response = await axios.post<AnalysisResponse>(apiEndpoint, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
