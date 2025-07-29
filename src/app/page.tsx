@@ -28,6 +28,12 @@ export default function Home(): React.JSX.Element {
   const [authLoading, setAuthLoading] = useState(true);
   const [showAnalytics, setShowAnalytics] = useState(false);
 
+  // Check if we're in development mode
+  const isDevelopment = typeof window !== 'undefined' && 
+    (window.location.hostname === 'localhost' || 
+     window.location.hostname.includes('vercel.app') ||
+     process.env.NODE_ENV === 'development');
+
   // State management
   const [imageUrl, setImageUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -40,8 +46,13 @@ export default function Home(): React.JSX.Element {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Authentication effect
+  // Authentication effect - skip in development
   useEffect(() => {
+    if (isDevelopment) {
+      setAuthLoading(false);
+      return;
+    }
+
     const getUser = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -88,7 +99,7 @@ export default function Home(): React.JSX.Element {
     );
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [isDevelopment]);
 
   // Derived state
   const hasInput = Boolean(selectedFile || imageUrl.trim());
@@ -155,20 +166,29 @@ export default function Home(): React.JSX.Element {
     setSelectedBoxIndices(new Set());
   };
 
-  const handleSignOut = async (): Promise<void> => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setUserProfile(null);
-    window.location.reload(); // Force reload to ensure session cleared and login prompt shown
+  const handleSignOut = async () => {
+    if (isDevelopment) {
+      // In development, just reload the page
+      window.location.reload();
+      return;
+    }
+    
+    try {
+      await supabase.auth.signOut();
+      window.location.reload();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
   const handleAuthSuccess = (): void => {
     // Auth success is handled by the useEffect listener
   };
 
+  // Show loading spinner while checking authentication
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading...</p>
@@ -177,12 +197,16 @@ export default function Home(): React.JSX.Element {
     );
   }
 
-  if (!user) {
+  // Show login prompt if not authenticated (skip in development)
+  if (!user && !isDevelopment) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Header />
-        <div className="container mx-auto px-4 py-8">
-          <AuthComponent onAuthSuccess={handleAuthSuccess} />
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 max-w-md w-full mx-4">
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">Welcome to ScrapLens AI</h1>
+            <p className="text-gray-600">Please sign in to continue</p>
+          </div>
+          <AuthComponent />
         </div>
       </div>
     );
@@ -216,12 +240,13 @@ export default function Home(): React.JSX.Element {
       <div className="min-h-screen bg-gray-50">
         <Header />
         
-        <div className="container mx-auto px-4 py-8">
+        <div className="container mx-auto px-2 py-4 max-w-[95vw]">
           <UserNav 
             user={user} 
             userProfile={userProfile} 
             onSignOut={handleSignOut}
-            onShowAnalytics={() => setShowAnalytics(true)}
+            showAnalytics={showAnalytics}
+            setShowAnalytics={setShowAnalytics}
           />
           
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -925,35 +950,39 @@ const DetectedObjectCard: React.FC<{
 };
 
 const UserNav: React.FC<{
-  user: User;
+  user: User | null;
   userProfile: UserProfile | null;
   onSignOut: () => void;
-  onShowAnalytics: () => void;
-}> = ({ user, userProfile, onSignOut, onShowAnalytics }) => (
+  showAnalytics: boolean;
+  setShowAnalytics: (show: boolean) => void;
+}> = ({ user, userProfile, onSignOut, showAnalytics, setShowAnalytics }) => (
   <div className="flex items-center justify-between mb-8 p-4 bg-white rounded-xl border border-gray-200">
     <div className="flex items-center space-x-3">
-      <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
-        <span className="text-white font-medium text-sm">
-          {user.email?.charAt(0).toUpperCase()}
+      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
+        <span className="text-white font-semibold text-sm">
+          {user ? user.email?.charAt(0).toUpperCase() : 'D'}
         </span>
       </div>
       <div>
-        <p className="font-medium text-gray-800">{user.email}</p>
-        <p className="text-xs text-gray-500">
-          {userProfile?.subscription_tier || 'Free Plan'}
+        <p className="font-medium text-gray-800">
+          {user ? user.email : 'Development Mode'}
+        </p>
+        <p className="text-sm text-gray-500">
+          {userProfile ? `${userProfile.api_usage_count}/${subscriptionLimits[userProfile.subscription_tier].daily_requests} requests used` : 'Unlimited requests'}
         </p>
       </div>
     </div>
+    
     <div className="flex items-center space-x-2">
       <button
-        onClick={onShowAnalytics}
+        onClick={() => setShowAnalytics(!showAnalytics)}
         className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
       >
-        📊 Analytics
+        {showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
       </button>
       <button
         onClick={onSignOut}
-        className="px-3 py-1 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
+        className="px-3 py-1 text-sm bg-red-600 text-white rounded-md hover:bg-red-700"
       >
         Sign Out
       </button>

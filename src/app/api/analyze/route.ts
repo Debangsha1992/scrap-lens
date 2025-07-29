@@ -177,12 +177,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const startTime = Date.now()
 
   try {
-    // Get user from session
-    const user = await getCurrentUser(request)
+    // Skip authentication in development mode or if env vars are missing
+    const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NEXT_PUBLIC_SUPABASE_URL;
+    
+    // Get user from session (skip if in development)
+    const user = isDevelopment ? null : await getCurrentUser(request)
     const userId = user?.id
 
-    // Check user limits if authenticated
-    if (userId) {
+    // Check user limits if authenticated and not in development
+    if (userId && !isDevelopment) {
       const profile = await getOrCreateUserProfile(user!)
       if (!profile) {
         return NextResponse.json(
