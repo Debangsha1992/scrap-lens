@@ -1,23 +1,21 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { BoundingBox, SegmentationPolygon } from '@/types/api';
-import { calculateCanvasDimensions, drawSegmentationPolygons, DETECTION_COLORS } from '@/utils/imageProcessing';
+import { BoundingBox } from '@/types/api';
+import { calculateCanvasDimensions, DETECTION_COLORS } from '@/utils/imageProcessing';
 
 interface ImageCanvasProps {
   imageUrl: string;
   boxes?: BoundingBox[];
-  segments?: SegmentationPolygon[];
   selectedBoxIndices?: Set<number>;
   className?: string;
 }
 
 /**
  * Canvas component for displaying images with side panel labels for object detection
- * Handles image rendering and object detection/segmentation visualization with animations
+ * Handles image rendering and object detection visualization with animations
  */
 export const ImageCanvas: React.FC<ImageCanvasProps> = ({
   imageUrl,
   boxes = [],
-  segments = [],
   selectedBoxIndices = new Set(),
   className = '',
 }) => {
@@ -42,15 +40,8 @@ export const ImageCanvas: React.FC<ImageCanvasProps> = ({
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(imageRef.current, 0, 0, canvas.width, canvas.height);
 
-    // Draw overlays based on what data is available
-    if (segments.length > 0) {
-      // Draw segmentation polygons (no animation needed)
-      const { scale } = calculateCanvasDimensions(
-        imageRef.current.naturalWidth,
-        imageRef.current.naturalHeight
-      );
-      drawSegmentationPolygons(ctx, segments, scale);
-    } else if (filteredBoxes.length > 0) {
+    // Draw overlays for object detection
+    if (filteredBoxes.length > 0) {
       // Draw animated radiating circles only (no labels on canvas)
       drawRadiatingCircles(ctx, filteredBoxes, boxes);
     }
@@ -59,7 +50,7 @@ export const ImageCanvas: React.FC<ImageCanvasProps> = ({
     if (filteredBoxes.length > 0) {
       animationFrameRef.current = requestAnimationFrame(animate);
     }
-  }, [filteredBoxes, boxes, segments]);
+  }, [filteredBoxes, boxes]);
 
   useEffect(() => {
     if (!imageUrl || !canvasRef.current) return;
@@ -97,11 +88,7 @@ export const ImageCanvas: React.FC<ImageCanvasProps> = ({
         ctx.clearRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Draw segmentation overlays if available
-        if (segments.length > 0) {
-          const { scale } = calculateCanvasDimensions(img.naturalWidth, img.naturalHeight);
-          drawSegmentationPolygons(ctx, segments, scale);
-        }
+        // Segmentation functionality removed
       }
     };
 
@@ -117,7 +104,7 @@ export const ImageCanvas: React.FC<ImageCanvasProps> = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [imageUrl, filteredBoxes, segments, animate]);
+  }, [imageUrl, filteredBoxes, animate]);
 
   return (
     <div className={`flex gap-4 ${className} relative`}>
@@ -126,7 +113,7 @@ export const ImageCanvas: React.FC<ImageCanvasProps> = ({
         <canvas
           ref={canvasRef}
           className="max-w-full h-auto rounded-lg shadow-md border border-gray-200"
-          aria-label={`Image analysis canvas with ${segments.length > 0 ? 'segmentation' : 'object detection'} overlays`}
+          aria-label="Image analysis canvas with object detection overlays"
         />
       </div>
 
@@ -134,7 +121,7 @@ export const ImageCanvas: React.FC<ImageCanvasProps> = ({
       {filteredBoxes.length > 0 && (
         <div className="flex-1 min-w-0 relative">
           <div className="space-y-4 p-4">
-            {filteredBoxes.map((box, filteredIndex) => {
+            {filteredBoxes.map((box) => {
               const originalIndex = boxes.findIndex(b => b === box);
               const color = DETECTION_COLORS[originalIndex % DETECTION_COLORS.length];
               return (

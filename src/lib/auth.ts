@@ -49,6 +49,11 @@ export async function getCurrentUser(request: NextRequest): Promise<User | null>
 
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   try {
+    if (!supabaseServer) {
+      console.error('Supabase server client is not available')
+      return null
+    }
+
     const { data, error } = await supabaseServer
       .from('users')
       .select('*')
@@ -77,6 +82,11 @@ export async function createUserProfile(user: User): Promise<UserProfile | null>
       api_usage_reset_date: new Date().toISOString(),
     }
 
+    if (!supabaseServer) {
+      console.error('Supabase server client is not available')
+      return null
+    }
+
     const { data, error } = await supabaseServer
       .from('users')
       .insert(newProfile)
@@ -97,6 +107,11 @@ export async function createUserProfile(user: User): Promise<UserProfile | null>
 
 export async function updateUserApiUsage(userId: string): Promise<boolean> {
   try {
+    if (!supabaseServer) {
+      console.error('Supabase server client is not available')
+      return false
+    }
+
     // Get current user first
     const { data: currentUser, error: fetchError } = await supabaseServer
       .from('users')
@@ -176,6 +191,11 @@ export async function checkUserLimits(profile: UserProfile): Promise<{
 
 export async function resetUserApiUsage(userId: string): Promise<boolean> {
   try {
+    if (!supabaseServer) {
+      console.error('Supabase server client is not available')
+      return false
+    }
+
     const { error } = await supabaseServer
       .from('users')
       .update({
@@ -202,6 +222,11 @@ export async function updateUserSubscription(
   tier: 'free' | 'premium' | 'enterprise'
 ): Promise<boolean> {
   try {
+    if (!supabaseServer) {
+      console.error('Supabase server client is not available')
+      return false
+    }
+
     const { error } = await supabaseServer
       .from('users')
       .update({

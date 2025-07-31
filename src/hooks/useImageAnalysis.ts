@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import axios from 'axios';
-import { AnalysisResponse, ErrorResponse, BoundingBox, SegmentationPolygon, ApiUsage, AnalysisMode, ModelType } from '@/types/api';
+import { AnalysisResponse, ErrorResponse, BoundingBox, ApiUsage, AnalysisMode } from '@/types/api';
 import { validateImageFile, isValidImageUrl } from '@/utils/imageProcessing';
 
 interface RateLimitInfo {
@@ -12,7 +12,6 @@ interface RateLimitInfo {
 interface UseImageAnalysisReturn {
   description: string;
   boxes: BoundingBox[];
-  segments: SegmentationPolygon[];
   usage: ApiUsage | null;
   loading: boolean;
   error: string;
@@ -30,12 +29,11 @@ interface UseImageAnalysisReturn {
 
 /**
  * Custom hook for image analysis functionality
- * Handles API calls and state management for image analysis with both object detection and segmentation
+ * Handles API calls and state management for image analysis with object detection
  */
 export const useImageAnalysis = (): UseImageAnalysisReturn => {
   const [description, setDescription] = useState('');
   const [boxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
-  const [segments, setSegments] = useState<SegmentationPolygon[]>([]);
   const [usage, setUsage] = useState<ApiUsage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -44,7 +42,6 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
   const clearResults = useCallback(() => {
     setDescription('');
     setBoundingBoxes([]);
-    setSegments([]);
     setUsage(null);
     setError('');
   }, []);
@@ -78,7 +75,6 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
     setError('');
     setDescription('');
     setBoundingBoxes([]);
-    setSegments([]);
     setUsage(null);
 
     try {
@@ -92,10 +88,9 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
 
       // Set analysis mode flags
       const enableBoundingBoxes = analysisMode === 'detection';
-      const enableSegmentation = analysisMode === 'segmentation';
       
       formData.append('enableBoundingBoxes', enableBoundingBoxes.toString());
-      formData.append('enableSegmentation', enableSegmentation.toString());
+      formData.append('enableSegmentation', 'false');
       formData.append('model', (apiProvider === 'openai' ? 'gpt-4o-mini' : 'qwen-vl-max'));
       formData.append('imageWidth', imageWidth.toString());
       formData.append('imageHeight', imageHeight.toString());
@@ -113,7 +108,6 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
       const data = response.data;
       setDescription(data.description);
       setBoundingBoxes(data.boxes || []);
-      setSegments(data.segments || []);
       setUsage(data.usage || null);
 
       // Extract rate limit info from headers
@@ -155,7 +149,6 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
   return {
     description,
     boxes,
-    segments,
     usage,
     loading,
     error,

@@ -7,7 +7,7 @@ import { InputMethod } from '@/types/api';
 import { useImageAnalysis } from '@/hooks/useImageAnalysis';
 import { ImageCanvas } from '@/components/ImageCanvas';
 import { ImageInputCard } from '@/components/ImageInputCard';
-import { BoxSelectionProvider, useBoxSelection } from '@/context/BoxSelectionContext';
+import { BoxSelectionProvider } from '@/context/BoxSelectionContext';
 import { AuthComponent } from '@/components/AuthComponent';
 import { AnalyticsDashboard } from '@/components/AnalyticsDashboard';
 import { ClickableMarkdown } from '@/components/ClickableMarkdown';
@@ -27,6 +27,7 @@ export default function Home(): React.JSX.Element {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [isDevelopment, setIsDevelopment] = useState(false);
 
   // State management
   const [imageUrl, setImageUrl] = useState('');
@@ -36,12 +37,32 @@ export default function Home(): React.JSX.Element {
   const [selectedBoxIndices, setSelectedBoxIndices] = useState<Set<number>>(new Set());
 
   // Hooks
-  const { description, boxes, segments, usage, loading, error, analyzeImage, clearResults } = useImageAnalysis();
+  const { description, boxes, usage, loading, error, analyzeImage, clearResults } = useImageAnalysis();
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Authentication effect
+  // Set development mode after component mounts to avoid hydration mismatch
   useEffect(() => {
+    const devMode = typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || 
+       window.location.hostname.includes('vercel.app') ||
+       window.location.hostname.includes('scrap-lens-dev') ||
+       window.location.hostname.includes('scrap-lens') ||
+       process.env.NODE_ENV === 'development' ||
+       process.env.VERCEL_ENV === 'preview' ||
+       process.env.VERCEL_ENV === 'development');
+    
+    setIsDevelopment(devMode);
+  }, []);
+
+  // Authentication effect - skip in development
+  useEffect(() => {
+    if (isDevelopment) {
+      console.log('Development mode detected - skipping authentication');
+      setAuthLoading(false);
+      return;
+    }
+
     const getUser = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -88,7 +109,7 @@ export default function Home(): React.JSX.Element {
     );
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [isDevelopment]);
 
   // Derived state
   const hasInput = Boolean(selectedFile || imageUrl.trim());
@@ -155,20 +176,29 @@ export default function Home(): React.JSX.Element {
     setSelectedBoxIndices(new Set());
   };
 
-  const handleSignOut = async (): Promise<void> => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setUserProfile(null);
-    window.location.reload(); // Force reload to ensure session cleared and login prompt shown
+  const handleSignOut = async () => {
+    if (isDevelopment) {
+      // In development, just reload the page
+      window.location.reload();
+      return;
+    }
+    
+    try {
+      await supabase.auth.signOut();
+      window.location.reload();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
-  const handleAuthSuccess = (): void => {
-    // Auth success is handled by the useEffect listener
-  };
+  // const handleAuthSuccess = (): void => {
+  //   // Auth success is handled by the useEffect listener
+  // };
 
-  if (authLoading) {
+  // Show loading spinner while checking authentication (skip in development)
+  if (authLoading && !isDevelopment) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading...</p>
@@ -177,12 +207,28 @@ export default function Home(): React.JSX.Element {
     );
   }
 
-  if (!user) {
+  // Show login prompt if not authenticated (skip in development)
+  if (!user && !isDevelopment) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Header />
-        <div className="container mx-auto px-4 py-8">
-          <AuthComponent onAuthSuccess={handleAuthSuccess} />
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 max-w-md w-full mx-4">
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">Welcome to ScrapLens AI</h1>
+            <p className="text-gray-600">Please sign in to continue</p>
+          </div>
+          <AuthComponent />
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading while determining development mode
+  if (!isDevelopment && authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Initializing...</p>
         </div>
       </div>
     );
@@ -216,12 +262,13 @@ export default function Home(): React.JSX.Element {
       <div className="min-h-screen bg-gray-50">
         <Header />
         
-        <div className="container mx-auto px-4 py-8">
+        <div className="container mx-auto px-2 py-4 max-w-[95vw]">
           <UserNav 
             user={user} 
             userProfile={userProfile} 
             onSignOut={handleSignOut}
-            onShowAnalytics={() => setShowAnalytics(true)}
+            showAnalytics={showAnalytics}
+            setShowAnalytics={setShowAnalytics}
           />
           
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -261,7 +308,6 @@ export default function Home(): React.JSX.Element {
                 <ImageDisplayCard
                   currentImage={currentImage}
                   boxes={boxes}
-                  segments={segments}
                   selectedBoxIndices={selectedBoxIndices}
                   onToggleBox={toggleBoxSelection}
                   onClearSelection={clearBoxSelection}
@@ -275,7 +321,6 @@ export default function Home(): React.JSX.Element {
                 description={description}
                 usage={usage}
                 boxes={boxes}
-                segments={segments}
                 selectedBoxIndices={selectedBoxIndices}
               />
             </div>
@@ -312,7 +357,6 @@ interface AnalysisSectionProps {
   description: string;
   usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
-  segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
   selectedBoxIndices: Set<number>;
 }
 
@@ -322,13 +366,12 @@ const AnalysisSection: React.FC<AnalysisSectionProps> = ({
   description,
   usage,
   boxes,
-  segments,
   selectedBoxIndices,
 }) => (
   <div className="space-y-6">
     {loading && <LoadingCard />}
     {error && <ErrorCard error={error} />}
-    {description && <AnalysisResultsCard description={description} usage={usage} boxes={boxes} segments={segments} selectedBoxIndices={selectedBoxIndices} />}
+    {description && <AnalysisResultsCard description={description} usage={usage} boxes={boxes} selectedBoxIndices={selectedBoxIndices} />}
   </div>
 );
 
@@ -409,12 +452,11 @@ const ApiProviderButtons: React.FC<{
 const ImageDisplayCard: React.FC<{
   currentImage: string;
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
-  segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
   selectedBoxIndices: Set<number>;
   onToggleBox: (index: number) => void;
   onClearSelection: () => void;
-}> = ({ currentImage, boxes, segments, selectedBoxIndices, onClearSelection }) => {
-  const hasResults = boxes.length > 0 || segments.length > 0;
+}> = ({ currentImage, boxes, selectedBoxIndices, onClearSelection }) => {
+  const hasResults = boxes.length > 0;
   
   const getDisplayTitle = () => {
     return 'Object Detection';
@@ -453,7 +495,6 @@ const ImageDisplayCard: React.FC<{
         <ImageCanvas 
           imageUrl={currentImage} 
           boxes={boxes}
-          segments={[]}
           selectedBoxIndices={selectedBoxIndices}
         />
       </div>
@@ -500,9 +541,8 @@ const AnalysisResultsCard: React.FC<{
   description: string;
   usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
-  segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
   selectedBoxIndices: Set<number>;
-}> = ({ description, usage, boxes, segments, selectedBoxIndices }) => {
+}> = ({ description, usage, boxes, selectedBoxIndices }) => {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -586,7 +626,7 @@ const InteractiveSceneDescription: React.FC<{
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
   selectedBoxIndices: Set<number>;
 }> = ({ description, boxes, selectedBoxIndices }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  // const [isExpanded, setIsExpanded] = useState(false);
 
   // Parse scrap items from the OpenAI structured response
   const parseScrapItems = (desc: string) => {
@@ -925,35 +965,39 @@ const DetectedObjectCard: React.FC<{
 };
 
 const UserNav: React.FC<{
-  user: User;
+  user: User | null;
   userProfile: UserProfile | null;
   onSignOut: () => void;
-  onShowAnalytics: () => void;
-}> = ({ user, userProfile, onSignOut, onShowAnalytics }) => (
+  showAnalytics: boolean;
+  setShowAnalytics: (show: boolean) => void;
+}> = ({ user, userProfile, onSignOut, showAnalytics, setShowAnalytics }) => (
   <div className="flex items-center justify-between mb-8 p-4 bg-white rounded-xl border border-gray-200">
     <div className="flex items-center space-x-3">
-      <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
-        <span className="text-white font-medium text-sm">
-          {user.email?.charAt(0).toUpperCase()}
+      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
+        <span className="text-white font-semibold text-sm">
+          {user ? user.email?.charAt(0).toUpperCase() : 'D'}
         </span>
       </div>
       <div>
-        <p className="font-medium text-gray-800">{user.email}</p>
-        <p className="text-xs text-gray-500">
-          {userProfile?.subscription_tier || 'Free Plan'}
+        <p className="font-medium text-gray-800">
+          {user ? user.email : 'Development Mode'}
+        </p>
+        <p className="text-sm text-gray-500">
+          {userProfile ? `${userProfile.api_usage_count}/${subscriptionLimits[userProfile.subscription_tier].daily_requests} requests used` : 'Unlimited requests'}
         </p>
       </div>
     </div>
+    
     <div className="flex items-center space-x-2">
       <button
-        onClick={onShowAnalytics}
+        onClick={() => setShowAnalytics(!showAnalytics)}
         className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
       >
-        📊 Analytics
+        {showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
       </button>
       <button
         onClick={onSignOut}
-        className="px-3 py-1 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
+        className="px-3 py-1 text-sm bg-red-600 text-white rounded-md hover:bg-red-700"
       >
         Sign Out
       </button>

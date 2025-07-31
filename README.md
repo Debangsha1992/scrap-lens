@@ -1,28 +1,31 @@
-# Scrap Lens 🔍
+# ScrapLens AI 🔍
 
-A powerful AI-powered image segmentation tool built with SAM2 (Segment Anything Model 2) that allows you to intelligently segment and analyze images.
+A powerful AI-powered scrap metal analysis tool that uses advanced computer vision models to identify and categorize different types of scrap metal in images.
 
 ## Features
 
-- **AI-Powered Segmentation**: Uses Meta's SAM2 model for precise image segmentation
-- **Interactive Selection**: Click to select objects or draw bounding boxes
-- **Real-time Processing**: Fast segmentation with immediate visual feedback
+- **AI-Powered Analysis**: Uses OpenAI GPT-4o and Alibaba Qwen-VL models for precise scrap metal identification
+- **Multiple Analysis Modes**: Generic taxonomy classification and granular/in-depth analysis
+- **Real-time Processing**: Fast analysis with immediate visual feedback
 - **Multiple Input Modes**: Support for file uploads and image URLs
 - **Modern UI**: Clean, responsive interface built with Next.js and Tailwind CSS
+- **User Authentication**: Secure user management with Supabase
 
 ## Architecture
 
 - **Frontend**: Next.js 14 with TypeScript and Tailwind CSS
-- **Backend**: Python FastAPI service with SAM2 integration
-- **AI Model**: Meta's Segment Anything Model 2 (SAM2)
+- **AI Models**: OpenAI GPT-4o and Alibaba Qwen-VL-Max
+- **Authentication**: Supabase Auth
+- **Database**: Supabase PostgreSQL
 
 ## Quick Start
 
 ### Prerequisites
 
 - Node.js 18+ and npm/yarn
-- Python 3.8+ and pip
-- CUDA-compatible GPU (recommended for optimal performance)
+- OpenAI API key
+- Alibaba Cloud DashScope API key
+- Supabase project (for authentication and database)
 
 ### Local Development
 
@@ -32,22 +35,23 @@ A powerful AI-powered image segmentation tool built with SAM2 (Segment Anything 
    cd scrap-lens
    ```
 
-2. **Start the backend service**
+2. **Install dependencies**
    ```bash
-   cd python-backend
-   pip install -r requirements.txt
-   chmod +x start_service.sh
-   ./start_service.sh
+   npm install
    ```
 
-3. **Start the frontend**
+3. **Set up environment variables**
    ```bash
-   cd scrap-metal-webapp
-   npm install
+   cp .env.example .env.local
+   # Add your API keys and Supabase configuration
+   ```
+
+4. **Start the development server**
+   ```bash
    npm run dev
    ```
 
-4. **Open your browser**
+5. **Open your browser**
    Navigate to `http://localhost:3000`
 
 ## Deployment
@@ -57,9 +61,8 @@ A powerful AI-powered image segmentation tool built with SAM2 (Segment Anything 
 The application is designed for cloud deployment:
 
 - **Frontend**: Deployed on Vercel
-- **Backend**: Deployed on Railway (GPU support)
-
-See deployment guide in `docs/DEPLOYMENT.md` for detailed instructions.
+- **Database & Auth**: Supabase (managed PostgreSQL and authentication)
+- **AI APIs**: OpenAI and Alibaba Cloud DashScope
 
 ## Tech Stack
 
@@ -68,46 +71,36 @@ See deployment guide in `docs/DEPLOYMENT.md` for detailed instructions.
 - TypeScript
 - Tailwind CSS
 - React Hooks
-- Axios for API calls
+- Framer Motion (animations)
+- Supabase (authentication & database)
 
-### Backend
-- FastAPI
-- SAM2 (Segment Anything Model 2)
-- PyTorch
-- OpenCV
-- NumPy
+### AI Models
+- OpenAI GPT-4o (Generic Taxonomy)
+- Alibaba Qwen-VL-Max (Granular Analysis)
+- Custom scrap metal taxonomy classification
 
 ## API Reference
 
-### Health Check
+### Qwen Analysis
 ```
-GET /health
-```
-
-### Image Segmentation
-```
-POST /segment
+POST /api/analyze
 Content-Type: multipart/form-data
 
 Parameters:
-- file: Image file
-- mode: Segmentation mode
-- points: Click coordinates (JSON)
-- boxes: Bounding boxes (JSON)
+- file: Image file (or imageUrl)
+- enableBoundingBoxes: boolean
+- model: qwen-vl-max
 ```
 
-### URL-based Segmentation
+### OpenAI Analysis
 ```
-POST /segment-url
-Content-Type: application/json
+POST /api/openai-analyze
+Content-Type: multipart/form-data
 
-Body:
-{
-  "image_url": "string",
-  "mode": "string",
-  "points": "string",
-  "boxes": "string"
-}
+Parameters:
+- file: Image file (or imageUrl)
+- enableBoundingBoxes: boolean
+- model: gpt-4o
 ```
 
 ## Contributing
@@ -124,5 +117,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-- Meta AI for the SAM2 model
+- OpenAI for the GPT-4o vision model
+- Alibaba Cloud for the Qwen-VL-Max model
+- Supabase for the authentication and database platform
 - The open-source community for various tools and libraries 
