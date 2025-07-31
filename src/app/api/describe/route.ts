@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { BoundingBox, SegmentationPolygon } from '@/types/api';
+import { BoundingBox } from '@/types/api';
 import { parseBoundingBoxes, validateBoundingBox } from '@/utils/boundingBoxParser';
-import { parseSegmentationPolygons, calculatePixelCoverage, validateSegmentationPolygon } from '@/utils/segmentationParser';
+// Segmentation functionality removed
 import { checkRateLimit, getClientIP, formatResetTime } from '@/utils/rateLimiter';
 
 // Configuration constants
@@ -59,10 +60,8 @@ const validateImageUrl = (url: string): void => {
 /**
  * Generates appropriate prompt based on analysis type
  */
-const generatePrompt = (enableBoundingBoxes: boolean, enableSegmentation: boolean): string => {
-  if (enableSegmentation) {
-    return 'Please analyze this image and perform image segmentation. For each object you detect, provide a detailed description and specify the object boundaries using polygon coordinates in the format: ObjectName: [[x1,y1],[x2,y2],[x3,y3],...[xn,yn]] where each coordinate pair represents a point on the object boundary. Include as many coordinate points as necessary to accurately outline each object.';
-  } else if (enableBoundingBoxes) {
+const generatePrompt = (enableBoundingBoxes: boolean): string => {
+  if (enableBoundingBoxes) {
     return 'Please analyze this image and provide detailed descriptions of all objects you can see. For each object, please specify its location using coordinates in the format [x, y, width, height] where x,y is the top-left corner. List each object with its bounding box coordinates.';
   } else {
     return 'Describe what\'s in this image in detail.';
@@ -146,32 +145,7 @@ const processBoundingBoxes = (
   return validBoxes;
 };
 
-/**
- * Processes segmentation polygons and calculates pixel coverage
- */
-const processSegmentationPolygons = (
-  description: string, 
-  enableSegmentation: boolean,
-  imageWidth: number = 800,
-  imageHeight: number = 600
-): SegmentationPolygon[] => {
-  if (!enableSegmentation || !description) {
-    return [];
-  }
-
-  const segments = parseSegmentationPolygons(description);
-  const validSegments = segments.filter(validateSegmentationPolygon);
-
-  if (segments.length > validSegments.length) {
-    console.warn(`Filtered out ${segments.length - validSegments.length} invalid segmentation polygons`);
-  }
-
-  // Calculate pixel coverage for each segment
-  const segmentsWithCoverage = calculatePixelCoverage(validSegments, imageWidth, imageHeight);
-
-  console.log(`Processed ${segmentsWithCoverage.length} valid segmentation polygons from response`);
-  return segmentsWithCoverage;
-};
+// Segmentation functionality removed
 
 /**
  * Cleans up AI response to create a readable scene description with markdown formatting
@@ -182,7 +156,7 @@ const cleanSceneDescription = (description: string): string => {
   }
 
   // Step 1: Aggressively remove ALL problematic content patterns
-  let cleanedText = description
+  const cleanedText = description
     // Remove ALL [object Object] patterns (multiple variations)
     .replace(/,\s*\[object Object\],?\s*/g, '')
     .replace(/\[object Object\],?\s*/g, '')
@@ -337,7 +311,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const urlInput = body.imageUrl as string;
     const base64Input = body.imageBase64 as string;
     const enableBoundingBoxes = body.enableBoundingBoxes === 'true';
-    const enableSegmentation = body.enableSegmentation === 'true';
+    // Segmentation functionality removed
     const model = (body.model as string) || 'qwen-vl-max';
     const imageWidth = parseInt(body.imageWidth as string) || 800;
     const imageHeight = parseInt(body.imageHeight as string) || 600;
@@ -360,7 +334,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Prepare API request
-    const prompt = generatePrompt(enableBoundingBoxes, enableSegmentation);
+    const prompt = generatePrompt(enableBoundingBoxes);
     const messageContent = [
       {
         type: 'image_url' as const,
@@ -390,7 +364,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Process results
     const boxes = processBoundingBoxes(description, enableBoundingBoxes);
-    const segments = processSegmentationPolygons(description, enableSegmentation, imageWidth, imageHeight);
+    // Segmentation functionality removed
 
     // Clean up description by removing coordinate data and creating a readable scene description  
     const cleanDescription = cleanSceneDescription(description);
@@ -398,11 +372,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       description: cleanDescription,
       boxes,
-      segments,
       usage: completion.usage,
       model: model,
       boundingBoxesEnabled: enableBoundingBoxes,
-      segmentationEnabled: enableSegmentation,
     }, {
       headers: {
         'X-RateLimit-Limit': '10',

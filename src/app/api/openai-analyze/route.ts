@@ -1,9 +1,10 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { createHash } from 'crypto'
-import { BoundingBox, SegmentationPolygon, AnalysisResponse } from '@/types/api'
+import { BoundingBox, AnalysisResponse } from '@/types/api'
 import { parseBoundingBoxes, validateBoundingBox } from '@/utils/boundingBoxParser'
-import { parseSegmentationPolygons, calculatePixelCoverage, validateSegmentationPolygon } from '@/utils/segmentationParser'
+// Segmentation functionality removed
 import { getCurrentUser, getOrCreateUserProfile, checkUserLimits, updateUserApiUsage } from '@/lib/auth'
 import { storeImage, generateImageHash } from '@/lib/storage'
 import { cacheAnalysisResult, getCachedAnalysisResult } from '@/lib/redis'
@@ -54,7 +55,7 @@ const validateImageUrl = (url: string): void => {
     if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
       throw new Error('Only HTTP and HTTPS URLs are supported')
     }
-  } catch (error) {
+  } catch {
     throw new Error('Invalid URL format')
   }
 }
@@ -190,52 +191,53 @@ const isUnwantedLabel = (label: string): boolean => {
 /**
  * Processes bounding boxes from OpenAI response using the same parser as Qwen
  */
-const processBoundingBoxes = (
-  description: string, 
-  enableBoundingBoxes: boolean
-): BoundingBox[] => {
-  if (!enableBoundingBoxes) return []
-  
-  try {
-    // Use the same parser as Qwen to ensure consistent output format
-    const boxes = parseBoundingBoxes(description)
-    
-    // If no boxes found with standard parser, try to extract from structured response
-    if (boxes.length === 0) {
-      const fallbackBoxes = extractOpenAIBoundingBoxes(description)
-      return fallbackBoxes.filter(box => {
-        const isUnwanted = isUnwantedLabel(box.label)
-        const isValid = validateBoundingBox(box) && !isUnwanted
-        
-        if (isUnwanted) {
-          console.log(`Filtered out unwanted label: "${box.label}"`)
-        }
-        
-        if (!isValid) {
-          console.warn('Invalid bounding box detected:', box)
-        }
-        return isValid
-      })
-    }
-    
-    return boxes.filter(box => {
-      const isUnwanted = isUnwantedLabel(box.label)
-      const isValid = validateBoundingBox(box) && !isUnwanted
-      
-      if (isUnwanted) {
-        console.log(`Filtered out unwanted label: "${box.label}"`)
-      }
-      
-      if (!isValid) {
-        console.warn('Invalid bounding box detected:', box)
-      }
-      return isValid
-    })
-  } catch (error) {
-    console.error('Error processing OpenAI bounding boxes:', error)
-    return []
-  }
-}
+// Unused function - keeping for potential future use
+// const processBoundingBoxes = (
+//   description: string, 
+//   enableBoundingBoxes: boolean
+// ): BoundingBox[] => {
+//   if (!enableBoundingBoxes) return []
+//   
+//   try {
+//     // Use the same parser as Qwen to ensure consistent output format
+//     const boxes = parseBoundingBoxes(description)
+//     
+//     // If no boxes found with standard parser, try to extract from structured response
+//     if (boxes.length === 0) {
+//       const fallbackBoxes = extractOpenAIBoundingBoxes(description)
+//       return fallbackBoxes.filter(box => {
+//         const isUnwanted = isUnwantedLabel(box.label)
+//         const isValid = validateBoundingBox(box) && !isUnwanted
+//         
+//         if (isUnwanted) {
+//           console.log(`Filtered out unwanted label: "${box.label}"`)
+//         }
+//         
+//         if (!isValid) {
+//           console.warn('Invalid bounding box detected:', box)
+//         }
+//         return isValid
+//       })
+//     }
+//     
+//     return boxes.filter(box => {
+//       const isUnwanted = isUnwantedLabel(box.label)
+//       const isValid = validateBoundingBox(box) && !isUnwanted
+//       
+//       if (isUnwanted) {
+//         console.log(`Filtered out unwanted label: "${box.label}"`)
+//       }
+//       
+//       if (!isValid) {
+//         console.warn('Invalid bounding box detected:', box)
+//       }
+//       return isValid
+//     })
+//   } catch (error) {
+//     console.error('Error processing OpenAI bounding boxes:', error)
+//     return []
+//   }
+// }
 
 /**
  * Fallback method to extract bounding boxes from OpenAI response when standard parser fails
@@ -349,70 +351,72 @@ const extractConfidenceFromContext = (description: string, label: string): numbe
 /**
  * Extracts object names from OpenAI description (kept for backward compatibility)
  */
-const parseOpenAIObjects = (description: string): string[] => {
-  const objects: string[] = []
-  
-  try {
-    // Look for patterns like "1. **Object**:" or "- Object:" or "Object:"
-    const patterns = [
-      /\*\*([^*]+)\*\*/g,  // **Object**
-      /\d+\.\s*([^:]+):/g,  // 1. Object:
-      /-\s*([^:]+):/g,      // - Object:
-      /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g  // Capitalized words
-    ]
-    
-    for (const pattern of patterns) {
-      let match
-      while ((match = pattern.exec(description)) !== null) {
-        const object = match[1].trim()
-        if (object.length > 2 && object.length < 50 && !objects.includes(object)) {
-          objects.push(object)
-        }
-      }
-    }
-    
-    // If no objects found with patterns, try to extract from common words
-    if (objects.length === 0) {
-      const commonObjects = ['hand', 'face', 'person', 'object', 'background', 'foreground']
-      const lowerDescription = description.toLowerCase()
-      
-      for (const obj of commonObjects) {
-        if (lowerDescription.includes(obj)) {
-          objects.push(obj.charAt(0).toUpperCase() + obj.slice(1))
-        }
-      }
-    }
-    
-    return objects.slice(0, 10) // Limit to 10 objects max
-  } catch (error) {
-    console.error('Error parsing OpenAI objects:', error)
-    return []
-  }
-}
+// Unused function - keeping for potential future use
+// const parseOpenAIObjects = (description: string): string[] => {
+//   const objects: string[] = []
+//   
+//   try {
+//     // Look for patterns like "1. **Object**:" or "- Object:" or "Object:"
+//     const patterns = [
+//       /\*\*([^*]+)\*\*/g,  // **Object**
+//       /\d+\.\s*([^:]+):/g,  // 1. Object:
+//       /-\s*([^:]+):/g,      // - Object:
+//       /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g  // Capitalized words
+//     ]
+//     
+//     for (const pattern of patterns) {
+//       let match
+//       while ((match = pattern.exec(description)) !== null) {
+//         const object = match[1].trim()
+//         if (object.length > 2 && object.length < 50 && !objects.includes(object)) {
+//           objects.push(object)
+//         }
+//       }
+//     }
+//     
+//     // If no objects found with patterns, try to extract from common words
+//     if (objects.length === 0) {
+//       const commonObjects = ['hand', 'face', 'person', 'object', 'background', 'foreground']
+//       const lowerDescription = description.toLowerCase()
+//       
+//       for (const obj of commonObjects) {
+//         if (lowerDescription.includes(obj)) {
+//           objects.push(obj.charAt(0).toUpperCase() + obj.slice(1))
+//         }
+//       }
+//     }
+//     
+//     return objects.slice(0, 10) // Limit to 10 objects max
+//   } catch (error) {
+//     console.error('Error parsing OpenAI objects:', error)
+//     return []
+//   }
+// }
 
 /**
  * Processes segmentation polygons from OpenAI response
  */
-const processSegmentationPolygons = (
-  description: string, 
-  enableSegmentation: boolean,
-  imageWidth: number = 800,
-  imageHeight: number = 600
-): SegmentationPolygon[] => {
-  if (!enableSegmentation) return []
-  
-  const polygons = parseSegmentationPolygons(description)
-  
-  const validPolygons = polygons.filter(polygon => {
-    const isValid = validateSegmentationPolygon(polygon)
-    if (!isValid) {
-      console.warn('Invalid segmentation polygon detected:', polygon)
-    }
-    return isValid
-  })
-  
-  return calculatePixelCoverage(validPolygons, imageWidth, imageHeight)
-}
+// Unused function - keeping for potential future use
+// const processSegmentationPolygons = (
+//   description: string, 
+//   enableSegmentation: boolean,
+//   imageWidth: number = 800,
+//   imageHeight: number = 600
+// ): SegmentationPolygon[] => {
+//   if (!enableSegmentation) return []
+//   
+//   const polygons = parseSegmentationPolygons(description)
+//   
+//   const validPolygons = polygons.filter(polygon => {
+//     const isValid = validateSegmentationPolygon(polygon)
+//     if (!isValid) {
+//       console.warn('Invalid segmentation polygon detected:', polygon)
+//     }
+//     return isValid
+//   })
+//   
+//   return calculatePixelCoverage(validPolygons, imageWidth, imageHeight)
+// }
 
 /**
  * Cleans and formats scene description for scrap metal analysis
@@ -451,7 +455,6 @@ const cleanSceneDescription = (description: string): string => {
 const parseOpenAIResponse = (response: string): {
   description: string;
   boxes: BoundingBox[];
-  segments: SegmentationPolygon[];
 } => {
   try {
     // Clean the response to ensure it's valid JSON
@@ -468,18 +471,17 @@ const parseOpenAIResponse = (response: string): {
     
     if (parsedResponse.scrap_items && Array.isArray(parsedResponse.scrap_items)) {
       const scrapItemsList = parsedResponse.scrap_items
-        .map((item: any) => `**${item.type}**: ${item.category}`)
+        .map((item: { type: string; category: string }) => `**${item.type}**: ${item.category}`)
         .join('\n\n');
       
       description = `The following scrap metal items have been identified and categorized:\n\n${scrapItemsList}`;
     }
     
-    // For now, return empty arrays for boxes and segments since we're focusing on classification
+    // For now, return empty arrays for boxes since we're focusing on classification
     // This can be extended later if bounding box detection is needed
     return {
       description,
-      boxes: [],
-      segments: []
+      boxes: []
     };
     
   } catch (error) {
@@ -489,8 +491,7 @@ const parseOpenAIResponse = (response: string): {
     // Fallback: try to extract any useful information from the response
     return {
       description: 'Failed to parse scrap metal analysis. Please try again.',
-      boxes: [],
-      segments: []
+      boxes: []
     };
   }
 };
@@ -553,9 +554,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const urlInput = body.imageUrl as string
     const base64Input = body.imageBase64 as string
     const enableBoundingBoxes = body.enableBoundingBoxes === 'true'
-    const enableSegmentation = body.enableSegmentation === 'true'
-    const imageWidth = parseInt(body.imageWidth as string) || 800
-    const imageHeight = parseInt(body.imageHeight as string) || 600
+    // Segmentation functionality removed
+    // const imageWidth = parseInt(body.imageWidth as string) || 800
+    // const imageHeight = parseInt(body.imageHeight as string) || 600
 
     // Determine image source and validate
     let imageUrl = ''
@@ -587,7 +588,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Check cache first (use openai prefix to distinguish from qwen cache)
-    const analysisMode = enableSegmentation ? 'segmentation' : enableBoundingBoxes ? 'detection' : 'description'
+    const analysisMode = enableBoundingBoxes ? 'detection' : 'description'
     const cachedResult = await getCachedAnalysisResult(`openai_${imageHash}`, 'gpt-4o', analysisMode)
     
     if (cachedResult) {
@@ -644,7 +645,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const description = completion.choices[0]?.message?.content || 'No description available'
 
     // Process results using the new JSON parser
-    const { description: parsedDescription, boxes, segments } = parseOpenAIResponse(description);
+    const { description: parsedDescription, boxes } = parseOpenAIResponse(description);
     
     // Clean up description
     const cleanDescription = cleanSceneDescription(parsedDescription)
@@ -655,11 +656,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const analysisResult: AnalysisResponse = {
       description: cleanDescription,
       boxes,
-      segments,
       usage: completion.usage,
       model: 'gpt-4o',
       boundingBoxesEnabled: enableBoundingBoxes,
-      segmentationEnabled: enableSegmentation,
     }
 
     // Cache result with openai prefix

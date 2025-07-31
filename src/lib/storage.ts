@@ -66,7 +66,7 @@ export async function storeImage(
     }
     
     // Get image dimensions
-    const { width, height } = await getImageDimensions(file)
+    const { width, height } = await getImageDimensions()
     
     // Store in Supabase Storage
     const fileName = `${hash}.${file.name.split('.').pop()}`
@@ -275,7 +275,7 @@ export async function getImageUrl(filePath: string): Promise<string | null> {
   }
 }
 
-async function getImageDimensions(_file: File): Promise<{ width: number; height: number }> {
+async function getImageDimensions(): Promise<{ width: number; height: number }> {
   try {
     // For server-side execution, we'll return default dimensions
     // In a production environment, you'd use a library like 'sharp' or 'image-size'

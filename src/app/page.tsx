@@ -7,7 +7,7 @@ import { InputMethod } from '@/types/api';
 import { useImageAnalysis } from '@/hooks/useImageAnalysis';
 import { ImageCanvas } from '@/components/ImageCanvas';
 import { ImageInputCard } from '@/components/ImageInputCard';
-import { BoxSelectionProvider, useBoxSelection } from '@/context/BoxSelectionContext';
+import { BoxSelectionProvider } from '@/context/BoxSelectionContext';
 import { AuthComponent } from '@/components/AuthComponent';
 import { AnalyticsDashboard } from '@/components/AnalyticsDashboard';
 import { ClickableMarkdown } from '@/components/ClickableMarkdown';
@@ -37,7 +37,7 @@ export default function Home(): React.JSX.Element {
   const [selectedBoxIndices, setSelectedBoxIndices] = useState<Set<number>>(new Set());
 
   // Hooks
-  const { description, boxes, segments, usage, loading, error, analyzeImage, clearResults } = useImageAnalysis();
+  const { description, boxes, usage, loading, error, analyzeImage, clearResults } = useImageAnalysis();
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -191,9 +191,9 @@ export default function Home(): React.JSX.Element {
     }
   };
 
-  const handleAuthSuccess = (): void => {
-    // Auth success is handled by the useEffect listener
-  };
+  // const handleAuthSuccess = (): void => {
+  //   // Auth success is handled by the useEffect listener
+  // };
 
   // Show loading spinner while checking authentication (skip in development)
   if (authLoading && !isDevelopment) {
@@ -308,7 +308,6 @@ export default function Home(): React.JSX.Element {
                 <ImageDisplayCard
                   currentImage={currentImage}
                   boxes={boxes}
-                  segments={segments}
                   selectedBoxIndices={selectedBoxIndices}
                   onToggleBox={toggleBoxSelection}
                   onClearSelection={clearBoxSelection}
@@ -322,7 +321,6 @@ export default function Home(): React.JSX.Element {
                 description={description}
                 usage={usage}
                 boxes={boxes}
-                segments={segments}
                 selectedBoxIndices={selectedBoxIndices}
               />
             </div>
@@ -359,7 +357,6 @@ interface AnalysisSectionProps {
   description: string;
   usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
-  segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
   selectedBoxIndices: Set<number>;
 }
 
@@ -369,13 +366,12 @@ const AnalysisSection: React.FC<AnalysisSectionProps> = ({
   description,
   usage,
   boxes,
-  segments,
   selectedBoxIndices,
 }) => (
   <div className="space-y-6">
     {loading && <LoadingCard />}
     {error && <ErrorCard error={error} />}
-    {description && <AnalysisResultsCard description={description} usage={usage} boxes={boxes} segments={segments} selectedBoxIndices={selectedBoxIndices} />}
+    {description && <AnalysisResultsCard description={description} usage={usage} boxes={boxes} selectedBoxIndices={selectedBoxIndices} />}
   </div>
 );
 
@@ -456,12 +452,11 @@ const ApiProviderButtons: React.FC<{
 const ImageDisplayCard: React.FC<{
   currentImage: string;
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
-  segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
   selectedBoxIndices: Set<number>;
   onToggleBox: (index: number) => void;
   onClearSelection: () => void;
-}> = ({ currentImage, boxes, segments, selectedBoxIndices, onClearSelection }) => {
-  const hasResults = boxes.length > 0 || segments.length > 0;
+}> = ({ currentImage, boxes, selectedBoxIndices, onClearSelection }) => {
+  const hasResults = boxes.length > 0;
   
   const getDisplayTitle = () => {
     return 'Object Detection';
@@ -500,7 +495,6 @@ const ImageDisplayCard: React.FC<{
         <ImageCanvas 
           imageUrl={currentImage} 
           boxes={boxes}
-          segments={[]}
           selectedBoxIndices={selectedBoxIndices}
         />
       </div>
@@ -547,9 +541,8 @@ const AnalysisResultsCard: React.FC<{
   description: string;
   usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
-  segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
   selectedBoxIndices: Set<number>;
-}> = ({ description, usage, boxes, segments, selectedBoxIndices }) => {
+}> = ({ description, usage, boxes, selectedBoxIndices }) => {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -633,7 +626,7 @@ const InteractiveSceneDescription: React.FC<{
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
   selectedBoxIndices: Set<number>;
 }> = ({ description, boxes, selectedBoxIndices }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  // const [isExpanded, setIsExpanded] = useState(false);
 
   // Parse scrap items from the OpenAI structured response
   const parseScrapItems = (desc: string) => {

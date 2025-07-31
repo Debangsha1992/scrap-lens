@@ -1,4 +1,4 @@
-import { BoundingBox, ImageProcessingConfig, SegmentationPolygon } from '@/types/api';
+import { BoundingBox, ImageProcessingConfig } from '@/types/api';
 
 // Configuration constants
 export const IMAGE_CONFIG: ImageProcessingConfig = {
@@ -11,24 +11,32 @@ export const IMAGE_CONFIG: ImageProcessingConfig = {
 // Color palette for object detection visualization
 export const DETECTION_COLORS = [
   '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
-  '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
-] as const;
+  '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
+  '#F8C471', '#82E0AA', '#F1948A', '#85C1E9', '#D7BDE2'
+];
 
 /**
- * Validates if a file is a supported image format
+ * Validates image file type and size
  */
 export const validateImageFile = (file: File): { isValid: boolean; error?: string } => {
+  if (!file) {
+    return { isValid: false, error: 'No file provided' };
+  }
+
+  // Check file type
   if (!IMAGE_CONFIG.supportedFormats.includes(file.type)) {
-    return {
-      isValid: false,
-      error: `Unsupported file format. Please use: ${IMAGE_CONFIG.supportedFormats.join(', ')}`
+    return { 
+      isValid: false, 
+      error: `Unsupported file type. Please use: ${IMAGE_CONFIG.supportedFormats.join(', ')}` 
     };
   }
 
+  // Check file size
   if (file.size > IMAGE_CONFIG.maxFileSize) {
-    return {
-      isValid: false,
-      error: `File size exceeds ${IMAGE_CONFIG.maxFileSize / (1024 * 1024)}MB limit`
+    const maxSizeMB = IMAGE_CONFIG.maxFileSize / (1024 * 1024);
+    return { 
+      isValid: false, 
+      error: `File too large. Maximum size is ${maxSizeMB}MB` 
     };
   }
 
@@ -36,57 +44,56 @@ export const validateImageFile = (file: File): { isValid: boolean; error?: strin
 };
 
 /**
- * Converts a file to base64 data URL
- */
-export const fileToBase64 = async (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error('Failed to read file'));
-    reader.readAsDataURL(file);
-  });
-};
-
-/**
- * Calculates optimal canvas dimensions maintaining aspect ratio
+ * Calculates optimal canvas dimensions while maintaining aspect ratio
  */
 export const calculateCanvasDimensions = (
-  originalWidth: number,
-  originalHeight: number,
+  imageWidth: number, 
+  imageHeight: number,
   maxWidth: number = IMAGE_CONFIG.maxWidth,
   maxHeight: number = IMAGE_CONFIG.maxHeight
 ): { width: number; height: number; scale: number } => {
-  let { width, height } = { width: originalWidth, height: originalHeight };
-
+  const aspectRatio = imageWidth / imageHeight;
+  
+  let width = imageWidth;
+  let height = imageHeight;
+  
+  // Scale down if image is larger than max dimensions
   if (width > maxWidth || height > maxHeight) {
-    const scale = Math.min(maxWidth / width, maxHeight / height);
-    width *= scale;
-    height *= scale;
-    return { width, height, scale };
+    if (aspectRatio > 1) {
+      // Landscape
+      width = Math.min(width, maxWidth);
+      height = width / aspectRatio;
+    } else {
+      // Portrait
+      height = Math.min(height, maxHeight);
+      width = height * aspectRatio;
+    }
   }
-
-  return { width, height, scale: 1 };
+  
+  const scale = width / imageWidth;
+  
+  return { width: Math.round(width), height: Math.round(height), scale };
 };
 
 /**
- * Draws animated radiating circles on detected objects with description lines
+ * Draws animated radiating circles without labels for the main canvas
  */
-export const drawBoundingBoxes = (
+export const drawRadiatingCircles = (
   ctx: CanvasRenderingContext2D,
-  boxes: BoundingBox[],
-  selectedBoxIndices?: Set<number>
+  filteredBoxes: BoundingBox[],
+  allBoxes: BoundingBox[]
 ): void => {
   const canvasWidth = ctx.canvas.width;
   const canvasHeight = ctx.canvas.height;
   
-  // Filter boxes based on selection (show all if none selected or only selected ones)
-  const filteredBoxes = selectedBoxIndices && selectedBoxIndices.size > 0 
-    ? boxes.filter((_, index) => selectedBoxIndices.has(index))
-    : boxes;
+  // Only draw boxes that are in the filtered list
+  const boxesToDraw = filteredBoxes.length > 0 
+    ? filteredBoxes 
+    : allBoxes;
   
-  filteredBoxes.forEach((box, filteredIndex) => {
+  boxesToDraw.forEach((box) => {
     // Find the original index for color consistency
-    const originalIndex = boxes.findIndex(b => b === box);
+    const originalIndex = allBoxes.findIndex(b => b === box);
     const color = DETECTION_COLORS[originalIndex % DETECTION_COLORS.length];
 
     // Scale coordinates from normalized format (0-1000) to canvas coordinates
@@ -101,9 +108,6 @@ export const drawBoundingBoxes = (
     
     // Draw animated radiating circle
     drawRadiatingCircle(ctx, centerX, centerY, color, originalIndex);
-    
-    // Draw description line extending to the right
-    drawDescriptionLine(ctx, centerX, centerY, box.label, color, originalIndex, canvasWidth);
   });
 };
 
@@ -141,126 +145,12 @@ const drawRadiatingCircle = (
   ctx.fillStyle = color;
   ctx.globalAlpha = 1;
   ctx.fill();
-};
-
-/**
- * Draws a description line extending to the right with object label
- */
-const drawDescriptionLine = (
-  ctx: CanvasRenderingContext2D,
-  startX: number,
-  startY: number,
-  label: string,
-  color: string,
-  index: number,
-  canvasWidth: number
-): void => {
-  const rightMargin = 20;
-  const lineEndX = canvasWidth - rightMargin;
-  const verticalSpacing = 30;
-  
-  // Calculate description position (spread vertically on the right side)
-  const descriptionY = 40 + (index * verticalSpacing);
-  
-  // Draw line from circle to description area
-  ctx.beginPath();
-  ctx.moveTo(startX, startY);
-  ctx.lineTo(lineEndX - 150, descriptionY);
-  ctx.strokeStyle = color;
-  ctx.globalAlpha = 0.7;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  
-  // Draw description background
-  const labelText = label.length > 20 ? label.substring(0, 20) + '...' : label;
-  ctx.font = 'bold 12px Inter, system-ui, sans-serif';
-  const textMetrics = ctx.measureText(labelText);
-  const textWidth = textMetrics.width;
-  const textHeight = 18;
-  
-  // Background rectangle
-  ctx.fillStyle = color;
-  ctx.globalAlpha = 0.9;
-  ctx.fillRect(lineEndX - 150, descriptionY - textHeight/2, textWidth + 12, textHeight);
-  
-  // Text
-  ctx.fillStyle = '#FFFFFF';
-  ctx.globalAlpha = 1;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(labelText, lineEndX - 150 + 6, descriptionY);
   
   // Reset global alpha
   ctx.globalAlpha = 1;
 };
 
-/**
- * Draws segmentation polygons on canvas with labels and pixel coverage
- */
-export const drawSegmentationPolygons = (
-  ctx: CanvasRenderingContext2D,
-  segments: SegmentationPolygon[],
-  scale: number
-): void => {
-  segments.forEach((segment, index) => {
-    const color = DETECTION_COLORS[index % DETECTION_COLORS.length];
-    
-    if (segment.points.length < 3) return; // Need at least 3 points for a polygon
-
-    // Draw polygon outline
-    ctx.beginPath();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    
-    // Move to first point
-    const firstPoint = segment.points[0];
-    ctx.moveTo(firstPoint.x * scale, firstPoint.y * scale);
-    
-    // Draw lines to all other points
-    for (let i = 1; i < segment.points.length; i++) {
-      const point = segment.points[i];
-      ctx.lineTo(point.x * scale, point.y * scale);
-    }
-    
-    // Close the polygon
-    ctx.closePath();
-    
-    // Fill with semi-transparent color
-    ctx.fillStyle = color + '40'; // Add 40 for 25% opacity
-    ctx.fill();
-    
-    // Stroke the outline
-    ctx.stroke();
-    
-    // Calculate polygon center for label placement
-    const centerX = segment.points.reduce((sum, point) => sum + point.x, 0) / segment.points.length * scale;
-    const centerY = segment.points.reduce((sum, point) => sum + point.y, 0) / segment.points.length * scale;
-    
-    // Draw label with pixel coverage information
-    const labelText = segment.pixelCoverage !== undefined
-      ? `${segment.label} (${segment.pixelCoverage.toFixed(1)}%)`
-      : segment.label;
-    
-    ctx.font = 'bold 12px Inter, system-ui, sans-serif';
-    const textMetrics = ctx.measureText(labelText);
-    const labelWidth = textMetrics.width + 8;
-    const labelHeight = 18;
-    
-    // Label background
-    ctx.fillStyle = color;
-    ctx.fillRect(centerX - labelWidth/2, centerY - labelHeight/2, labelWidth, labelHeight);
-    
-    // Label text
-    ctx.fillStyle = '#FFFFFF';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(labelText, centerX, centerY);
-  });
-  
-  // Reset text alignment
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-};
+// Removed unused drawDescriptionLine function
 
 /**
  * Validates URL format
@@ -272,4 +162,4 @@ export const isValidImageUrl = (url: string): boolean => {
   } catch {
     return false;
   }
-}; 
+};

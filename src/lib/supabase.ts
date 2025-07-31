@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { BoundingBox, SegmentationPolygon, ConfidenceScores, ApiUsage, UserCorrections } from '@/types/api'
+import { BoundingBox, ConfidenceScores, ApiUsage, UserCorrections } from '@/types/api'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -135,7 +135,7 @@ export interface Database {
           analysis_mode: string
           description: string | null
           bounding_boxes: BoundingBox[] | null
-          segmentation_polygons: SegmentationPolygon[] | null
+          segmentation_polygons: null
           confidence_scores: ConfidenceScores | null
           processing_time_ms: number | null
           token_usage: ApiUsage | null
@@ -149,7 +149,7 @@ export interface Database {
           analysis_mode: string
           description?: string | null
           bounding_boxes?: BoundingBox[] | null
-          segmentation_polygons?: SegmentationPolygon[] | null
+          segmentation_polygons?: null
           confidence_scores?: ConfidenceScores | null
           processing_time_ms?: number | null
           token_usage?: ApiUsage | null
@@ -163,7 +163,7 @@ export interface Database {
           analysis_mode?: string
           description?: string | null
           bounding_boxes?: BoundingBox[] | null
-          segmentation_polygons?: SegmentationPolygon[] | null
+          segmentation_polygons?: null
           confidence_scores?: ConfidenceScores | null
           processing_time_ms?: number | null
           token_usage?: ApiUsage | null

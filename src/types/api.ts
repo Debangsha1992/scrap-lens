@@ -13,12 +13,7 @@ export interface BoundingBox {
   confidence?: number;
 }
 
-export interface SegmentationPolygon {
-  label: string;
-  points: Array<{ x: number; y: number }>;
-  confidence?: number;
-  pixelCoverage?: number; // Percentage of image covered by this segment
-}
+// Removed SegmentationPolygon interface - segmentation functionality removed
 
 export interface ErrorResponse {
   response?: {
@@ -31,11 +26,9 @@ export interface ErrorResponse {
 export interface AnalysisResponse {
   description: string;
   boxes?: BoundingBox[];
-  segments?: SegmentationPolygon[];
   usage?: ApiUsage;
   model?: string;
   boundingBoxesEnabled?: boolean;
-  segmentationEnabled?: boolean;
 }
 
 export interface ImageProcessingConfig {
@@ -67,7 +60,6 @@ export interface UserSessionData {
 
 export interface ConfidenceScores {
   boxes?: number[];
-  segments?: number[];
   overall?: number;
 }
 
@@ -75,9 +67,6 @@ export interface UserCorrections {
   addedBoxes?: BoundingBox[];
   removedBoxes?: BoundingBox[];
   modifiedBoxes?: Array<{ original: BoundingBox; modified: BoundingBox }>;
-  addedSegments?: SegmentationPolygon[];
-  removedSegments?: SegmentationPolygon[];
-  modifiedSegments?: Array<{ original: SegmentationPolygon; modified: SegmentationPolygon }>;
 }
 
 export interface TrainingDataExport {
@@ -93,5 +82,5 @@ export interface TrainingDataExport {
 }
 
 export type InputMethod = 'url' | 'file';
-export type AnalysisMode = 'detection' | 'segmentation';
+export type AnalysisMode = 'detection';
 export type ModelType = 'qwen-vl-max' | 'qwen-vl-plus' | 'qwen-vl-max-2025-04-08'; 

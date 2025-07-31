@@ -1,5 +1,5 @@
 import { supabaseServer } from './supabase'
-import { BoundingBox, SegmentationPolygon, UserCorrections, ConfidenceScores, ApiUsage, TrainingDataExport } from '@/types/api'
+import { BoundingBox, UserCorrections, ConfidenceScores, ApiUsage, TrainingDataExport } from '@/types/api'
 
 export interface TrainingData {
   id?: string
@@ -21,7 +21,7 @@ export interface AnalysisResult {
   analysis_mode: string
   description: string | null
   bounding_boxes: BoundingBox[] | null
-  segmentation_polygons: SegmentationPolygon[] | null
+  segmentation_polygons: null
   confidence_scores: ConfidenceScores | null
   processing_time_ms: number | null
   token_usage: ApiUsage | null
@@ -33,10 +33,15 @@ export async function storeAnalysisResult(data: {
   userId?: string
   model: string
   analysisMode: string
-  result: { description: string; boxes?: BoundingBox[]; segments?: SegmentationPolygon[]; usage?: ApiUsage }
+  result: { description: string; boxes?: BoundingBox[]; usage?: ApiUsage }
   processingTime: number
 }): Promise<AnalysisResult | null> {
   try {
+    if (!supabaseServer) {
+      console.error('Supabase server client is not available')
+      return null
+    }
+
     const analysisData: Omit<AnalysisResult, 'id' | 'created_at'> = {
       image_id: data.imageId,
       user_id: data.userId || null,
@@ -44,7 +49,7 @@ export async function storeAnalysisResult(data: {
       analysis_mode: data.analysisMode,
       description: data.result.description || null,
       bounding_boxes: data.result.boxes || null,
-      segmentation_polygons: data.result.segments || null,
+      segmentation_polygons: null,
       confidence_scores: extractConfidenceScores(data.result),
       processing_time_ms: data.processingTime,
       token_usage: data.result.usage || null
@@ -61,7 +66,7 @@ export async function storeAnalysisResult(data: {
       return null
     }
 
-    return dbData
+    return dbData as unknown as AnalysisResult
   } catch (error) {
     console.error('Error in storeAnalysisResult:', error)
     return null
@@ -77,6 +82,11 @@ export async function submitTrainingData(data: {
   feedbackScore: number
 }): Promise<boolean> {
   try {
+    if (!supabaseServer) {
+      console.error('Supabase server client is not available')
+      return false
+    }
+
     const trainingData: Omit<TrainingData, 'id' | 'created_at'> = {
       image_id: data.imageId,
       user_id: data.userId || null,
@@ -109,6 +119,11 @@ export async function getUserAnalysisHistory(
   offset: number = 0
 ): Promise<AnalysisResult[]> {
   try {
+    if (!supabaseServer) {
+      console.error('Supabase server client is not available')
+      return []
+    }
+
     const { data, error } = await supabaseServer
       .from('analysis_results')
       .select(`
@@ -129,7 +144,7 @@ export async function getUserAnalysisHistory(
       return []
     }
 
-    return data || []
+    return (data || []) as unknown as AnalysisResult[]
   } catch (error) {
     console.error('Error in getUserAnalysisHistory:', error)
     return []
@@ -141,6 +156,11 @@ export async function getTrainingDataForExport(
   approvedOnly: boolean = true
 ): Promise<TrainingDataExport[]> {
   try {
+    if (!supabaseServer) {
+      console.error('Supabase server client is not available')
+      return []
+    }
+
     let query = supabaseServer
       .from('training_data')
       .select(`
@@ -169,7 +189,7 @@ export async function getTrainingDataForExport(
     }
 
     // Format data for model training
-    return formatTrainingData(data || [])
+    return formatTrainingData((data || []) as unknown as TrainingDataExport[])
   } catch (error) {
     console.error('Error in getTrainingDataForExport:', error)
     return []
@@ -178,6 +198,11 @@ export async function getTrainingDataForExport(
 
 export async function approveTrainingData(dataId: string): Promise<boolean> {
   try {
+    if (!supabaseServer) {
+      console.error('Supabase server client is not available')
+      return false
+    }
+
     const { error } = await supabaseServer
       .from('training_data')
       .update({ is_approved_for_training: true })
@@ -204,6 +229,11 @@ export async function getAnalyticsData(userId?: string): Promise<{
   averageProcessingTime: number
 }> {
   try {
+    if (!supabaseServer) {
+      console.error('Supabase server client is not available')
+      return { totalAnalyses: 0, totalImages: 0, modelUsage: {}, dailyUsage: [], topObjects: [], averageProcessingTime: 0 }
+    }
+
     let query = supabaseServer.from('analysis_results').select('*')
     
     if (userId) {
@@ -225,24 +255,25 @@ export async function getAnalyticsData(userId?: string): Promise<{
     }
 
     // Process analytics data
-    const totalAnalyses = data.length
-    const uniqueImageIds = new Set(data.map((item: AnalysisResult) => item.image_id))
+    const typedData = data as unknown as AnalysisResult[]
+    const totalAnalyses = typedData.length
+    const uniqueImageIds = new Set(typedData.map((item: AnalysisResult) => item.image_id))
     const totalImages = uniqueImageIds.size
 
     // Model usage statistics
     const modelUsage: Record<string, number> = {}
-    data.forEach((item: AnalysisResult) => {
+    typedData.forEach((item: AnalysisResult) => {
       modelUsage[item.model] = (modelUsage[item.model] || 0) + 1
     })
 
     // Daily usage (last 30 days)
-    const dailyUsage = calculateDailyUsage(data)
+    const dailyUsage = calculateDailyUsage(typedData)
 
     // Top detected objects
-    const topObjects = calculateTopObjects(data)
+    const topObjects = calculateTopObjects(typedData)
 
     // Average processing time
-    const processingTimes = data
+    const processingTimes = typedData
       .filter((item: AnalysisResult) => item.processing_time_ms)
       .map((item: AnalysisResult) => item.processing_time_ms!)
     const averageProcessingTime = processingTimes.length > 0
@@ -270,19 +301,15 @@ export async function getAnalyticsData(userId?: string): Promise<{
   }
 }
 
-function extractConfidenceScores(result: { boxes?: BoundingBox[]; segments?: SegmentationPolygon[] }): ConfidenceScores | null {
+function extractConfidenceScores(result: { boxes?: BoundingBox[] }): ConfidenceScores | null {
   const scores: ConfidenceScores = {}
   
   if (result.boxes) {
     scores.boxes = result.boxes.map((box: BoundingBox) => box.confidence || 0)
   }
   
-  if (result.segments) {
-    scores.segments = result.segments.map((segment: SegmentationPolygon) => segment.confidence || 0)
-  }
-  
   // Calculate overall confidence
-  const allScores = [...(scores.boxes || []), ...(scores.segments || [])]
+  const allScores = [...(scores.boxes || [])]
   if (allScores.length > 0) {
     scores.overall = allScores.reduce((sum, score) => sum + score, 0) / allScores.length
   }
@@ -335,12 +362,7 @@ function calculateTopObjects(data: AnalysisResult[]): Array<{ label: string; cou
       })
     }
     
-    if (item.segmentation_polygons) {
-      item.segmentation_polygons.forEach((segment: SegmentationPolygon) => {
-        const label = segment.label.toLowerCase()
-        objectCounts[label] = (objectCounts[label] || 0) + 1
-      })
-    }
+    // Segmentation functionality removed
   })
 
   return Object.entries(objectCounts)

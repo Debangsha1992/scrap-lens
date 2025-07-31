@@ -20,11 +20,11 @@ interface AnalyticsData {
   }
 }
 
-interface UserProfile {
-  subscription_tier: 'free' | 'premium' | 'enterprise'
-  api_usage_count: number
-  email: string
-}
+// interface UserProfile {
+//   subscription_tier: 'free' | 'premium' | 'enterprise'
+//   api_usage_count: number
+//   email: string
+// }
 
 export function AnalyticsDashboard() {
   const [analytics, setAnalytics] = useState<AnalyticsData>({

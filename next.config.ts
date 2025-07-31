@@ -7,6 +7,18 @@ const nextConfig: NextConfig = {
   // Server external packages for better performance
   serverExternalPackages: ['openai'],
   
+  // Experimental features
+  experimental: {
+    turbo: {
+      rules: {
+        '*.svg': {
+          loaders: ['@svgr/webpack'],
+          as: '*.js',
+        },
+      },
+    },
+  },
+  
   // Image optimization settings
   images: {
     // Allow external image domains for analysis
@@ -20,6 +32,14 @@ const nextConfig: NextConfig = {
         hostname: '**',
       },
     ],
+  },
+  
+  // Exclude directories from build
+  webpack: (config, { buildId, dev, isServer, defaultLoaders, webpack }) => {
+    config.watchOptions = {
+      ignored: ['**/python-backend/**', '**/scrap-metal-webapp/**', '**/Taxonomy/**', '**/docs/**', '**/database/**'],
+    };
+    return config;
   },
 };
 
